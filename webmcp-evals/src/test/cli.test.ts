@@ -15,7 +15,7 @@ function help(...args: string[]): string {
 }
 
 describe("CLI backend option scope", () => {
-  it("offers --backend only on commands implemented by the backend abstraction", () => {
+  it("offers --backend on local and browser eval commands", () => {
     assert.doesNotMatch(help("--help"), /--backend/);
     assert.match(help("local", "--help"), /--backend/);
     assert.match(help("browser", "--help"), /--backend/);
@@ -23,7 +23,7 @@ describe("CLI backend option scope", () => {
     assert.doesNotMatch(help("simulate", "--help"), /--backend/);
   });
 
-  it("rejects --backend instead of silently ignoring it for simulate", () => {
+  it("rejects --backend instead of accepting it for simulate", () => {
     const result = spawnSync(
       process.execPath,
       [CLI, "--backend", "gemini", "simulate", "-u", "https://example.test", "-s", "x.json"],

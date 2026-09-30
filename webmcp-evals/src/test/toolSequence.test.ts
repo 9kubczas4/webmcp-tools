@@ -174,6 +174,8 @@ describe("explicitToolFailure", () => {
 
   it("passes through results that report nothing wrong", () => {
     assert.strictEqual(explicitToolFailure({ ok: true }), undefined);
+    assert.strictEqual(explicitToolFailure({ error: "" }), undefined);
+    assert.strictEqual(explicitToolFailure({ error: "   " }), undefined);
     assert.strictEqual(explicitToolFailure("added to cart"), undefined);
     assert.strictEqual(explicitToolFailure(null), undefined);
     assert.strictEqual(explicitToolFailure(42), undefined);

@@ -9,9 +9,10 @@
  *
  * TODO(simulate): this duplicates the execution loop in
  * `evaluator/smokeEvaluator.ts`. The timeout wrapper, the tool-availability
- * poll, the payload-level failure check and the stop-at-first-error loop are
- * the same logic there, differing only in how errors are phrased and what
- * result shape comes back. The duplication is deliberate while simulations are
+ * poll and the stop-at-first-error loop are the same logic there, differing
+ * only in how errors are phrased and what result shape comes back. The shared
+ * payload-level failure check lives here so both paths interpret tool results
+ * identically. The remaining duplication is deliberate while simulations are
  * a proposal: `smoke` is the one deterministic, key-free signal in this repo
  * and is not worth destabilising for a type that may not ship. Once the
  * simulation type is accepted, collapse the two into one runner — smoke's
@@ -109,11 +110,8 @@ export function explicitToolFailure(result: unknown): string | undefined {
 
   if (result === null || typeof result !== "object") return undefined;
   const response = result as Record<string, unknown>;
-  if (
-    response.success === false ||
-    response.isError === true ||
-    (response.error !== undefined && typeof response.error === "string")
-  ) {
+  const hasErrorMessage = typeof response.error === "string" && response.error.trim().length > 0;
+  if (response.success === false || response.isError === true || hasErrorMessage) {
     const detail = response.error ?? response.message;
     return typeof detail === "string" && detail.trim()
       ? `tool reported failure: ${detail}`

@@ -30,7 +30,7 @@ import { createBackend } from "../backends/index.js";
 import { analyzeEvalReport, ANALYZER_MODEL_DEFAULT, formatShortTitle } from "../analyzer/index.js";
 
 export interface CommandOptions {
-  backend: string;
+  backend?: string;
   model: string;
   runs: number;
   maxSteps?: number;
@@ -61,7 +61,7 @@ export async function runLocalCommand(options: CommandOptions, command?: Command
   const config: Config = {
     toolSchemaFile: toolsFile,
     evalsFile,
-    backend: opts.backend,
+    backend: opts.backend || "vercel",
     model: opts.model,
     runs: opts.runs,
     maxSteps: opts.maxSteps,
@@ -157,7 +157,7 @@ export async function runWebCommand(options: CommandOptions, command?: Command):
     const config: WebmcpConfig = {
       url,
       evalsFile,
-      backend: opts.backend,
+      backend: opts.backend || "vercel",
       model: opts.model,
       runs: opts.runs,
       maxSteps: opts.maxSteps,

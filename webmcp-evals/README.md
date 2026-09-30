@@ -111,6 +111,9 @@ npx webmcp-evals local -b gemini -m gemini-3.5-flash -t examples/pizza-maker/sch
 ### Command: `browser`
 
 Evaluates live WebMCP tools on a web page using Puppeteer.
+The `vercel` backend supports browser evals and lets the model prefix select a provider, for example
+`--model google:gemini-3.5-flash` or `--model openai:gpt-5`. The `gemini` and `ollama` adapters keep
+the same CLI contract but do not yet implement browser execution.
 
 ```bash
 npx webmcp-evals browser -u https://example.com/demo -e examples/pizza-maker/evals.json --open
