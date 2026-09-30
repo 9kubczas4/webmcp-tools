@@ -422,6 +422,12 @@ describe("loadSimulations", () => {
 
     assert.strictEqual(parsed.length, 2);
     assert.strictEqual(parsed[0].name, "Build and share a family pesto pizza");
+    assert.strictEqual(parsed[0].assertions?.length, 6);
+    assert.deepStrictEqual(parsed[0].assertions?.[0], {
+      type: "dom",
+      selector: "#size-text",
+      expect: { text: "Large" },
+    });
     assert.strictEqual(parsed[1].name, "Revise an existing pizza and share it");
     assert.strictEqual(parsed[1].setup?.length, 5);
   });

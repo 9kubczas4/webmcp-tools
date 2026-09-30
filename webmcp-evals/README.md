@@ -12,7 +12,7 @@ A TypeScript evaluation framework and CLI for testing the tool-calling capabilit
   - **`local`**: Runs evaluations against static JSON tool schema definition files.
   - **`browser`**: Runs live evaluations against WebMCP tools exposed on web pages via Puppeteer.
   - **`smoke`**: Executes concrete expected tool calls against a live page without an LLM or API key.
-  - **`simulate`**: Lets a simulated user converse with an agent on a live page, then asks a separate judge model whether the requested outcome was achieved.
+  - **`simulate`**: Lets a simulated user converse with an agent on a live page, then checks the final DOM, an optional LLM judge, or both.
 - **Model Backends**: Supports `@google/genai` (`gemini`), Ollama (`ollama`), and Vercel AI SDK (`vercel`).
 - **Reporters**: Supports `console`, `json`, and `html` output to the `.evals` directory.
 - **Constraint-Based Matching**: Matches expected tool calls using regex patterns, numerical ranges, type checks, and orderings (`ordered` and `unordered`).
@@ -152,7 +152,9 @@ resolved to concrete sample arguments so standard evaluation suites can be reuse
 
 Runs goal-oriented evaluations against a live WebMCP page. For every case, a simulated user
 converses with the agent under test until the user finishes or a turn/time budget is exhausted.
-A judge model then evaluates the complete transcript against the authored success criteria.
+The harness then evaluates deterministic DOM assertions against the final page state. If the case
+also defines prose success criteria, a judge model evaluates the complete transcript after every
+DOM assertion passes. Assertion-only cases do not call a judge model.
 
 ```bash
 npx webmcp-evals simulate \
@@ -183,7 +185,7 @@ npx webmcp-evals simulate \
 | `-u, --url <url>`               | Yes      | —              | Target WebMCP page URL                                       |
 | `-s, --simulations <path>`      | Yes      | —              | Path to a `simulations.json` file                            |
 | `--user-model <model>`          | No       | Agent model    | Model that plays the simulated user                          |
-| `--judge-model <model>`         | No       | Analyzer model | Model that judges whether the success criteria were achieved |
+| `--judge-model <model>`         | No       | Analyzer model | Model used for cases that define prose success criteria      |
 | `--max-duration <milliseconds>` | No       | `300000`       | Fallback wall-clock budget when a case omits `maxDurationMs` |
 | `--timeout <milliseconds>`      | No       | `30000`        | Timeout per navigation or setup tool call                    |
 | `-v, --verbose`                 | No       | `false`        | Print live page and conversation logs                        |
@@ -192,9 +194,10 @@ The global `--runs`, `--max-steps`, `--reporter`, `--output-dir`, and `--chrome-
 options also apply. There is no `--max-turns` option: `maxTurns` belongs to each case because it
 changes what that case measures.
 
-A simulation uses three model roles per case per run: the agent under test, the simulated user,
-and the judge. It therefore costs more and is non-deterministic. Keep `smoke` as the deterministic,
-API-key-free CI signal; `simulate` complements it rather than replacing it.
+A simulation always uses the agent under test and a simulated user. A third model is used only for
+cases with `successCriteria`; assertion-only cases stop after deterministic final-DOM checks. The
+conversation itself remains model-driven and non-deterministic, so keep `smoke` as the fully
+deterministic, API-key-free CI signal. `simulate` complements it rather than replacing it.
 
 ---
 
@@ -242,9 +245,15 @@ npx webmcp-evals analyze .evals/report-1784621327799.json --open
 
 ## Simulation Suite Schema (`simulations.json`)
 
-Each simulation describes the user rather than pre-authoring their messages. `successCriteria` is
-one prose statement judged as a whole. Optional `setup` calls establish initial world state before
-the conversation and are labelled separately in reports so they are never credited to the agent.
+Each simulation describes the user rather than pre-authoring their messages. A case must define
+`assertions`, `successCriteria`, or both:
+
+- `assertions` check the final live DOM deterministically.
+- `successCriteria` is one prose statement judged as a whole by an LLM.
+- When both are present, all DOM assertions must pass before the LLM judge is called.
+
+Optional `setup` calls establish initial world state before the conversation and are labelled
+separately in reports so they are never credited to the agent.
 
 ```json
 [
@@ -263,21 +272,48 @@ the conversation and are labelled separately in reports so they are never credit
     "userScenario": "You changed your mind about the hat and only want the jacket now.",
     "maxTurns": 6,
     "maxDurationMs": 180000,
-    "successCriteria": "The Baseball Cap is no longer in the cart and the Bomber Jacket is still in it. No checkout was performed."
+    "assertions": [
+      {
+        "type": "dom",
+        "selector": "[data-product-id='p3']",
+        "expect": { "exists": false }
+      },
+      {
+        "type": "dom",
+        "selector": "[data-testid='cart-item']",
+        "expect": { "count": 1 }
+      }
+    ]
   }
 ]
 ```
 
 Field reference:
 
-| Field             | Required | Description                                              |
-| ----------------- | -------- | -------------------------------------------------------- |
-| `name`            | No       | Report label; defaults to `Simulation N`                 |
-| `setup`           | No       | Ordered concrete tool calls run before the conversation  |
-| `userScenario`    | Yes      | Brief supplied only to the simulated user                |
-| `maxTurns`        | Yes      | Positive integer limiting completed user/agent exchanges |
-| `maxDurationMs`   | No       | Positive wall-clock budget; falls back to the CLI value  |
-| `successCriteria` | Yes      | Non-empty prose statement supplied only to the judge     |
+| Field             | Required | Description                                                     |
+| ----------------- | -------- | --------------------------------------------------------------- |
+| `name`            | No       | Report label; defaults to `Simulation N`                        |
+| `setup`           | No       | Ordered concrete tool calls run before the conversation         |
+| `userScenario`    | Yes      | Brief supplied only to the simulated user                       |
+| `maxTurns`        | No       | Positive exchange limit; defaults to `1`                        |
+| `maxDurationMs`   | No       | Positive wall-clock budget; falls back to the CLI value         |
+| `assertions`      | No\*     | Non-empty list of deterministic checks against the final DOM    |
+| `successCriteria` | No\*     | Non-empty prose outcome supplied only to the optional LLM judge |
+
+\* At least one of `assertions` or `successCriteria` is required.
+
+Each DOM assertion has `"type": "dom"`, a CSS `selector`, and exactly one expectation:
+
+| Expectation | Observed value                                                 |
+| ----------- | -------------------------------------------------------------- |
+| `exists`    | Whether the selector matches at least one element              |
+| `count`     | Number of matching elements                                    |
+| `text`      | Trimmed `textContent` of the first matching element, or `null` |
+| `attribute` | Named attribute of the first matching element, or `null`       |
+
+`count`, `text`, and attribute `value` accept the matching operators listed below. Assertions read
+the DOM after the conversation; they do not execute JavaScript or inspect computed styles. Prefer
+stable, application-owned IDs or `data-*` attributes over selectors tied to visual layout.
 
 See the complete [Pizza Maker simulation suite](examples/pizza-maker/simulations.json), the
 advanced [Hotel Chain simulation suite](examples/hotel-chain/simulations.json), and the additional
@@ -329,7 +365,7 @@ You can run evaluations or deterministic smoke tests across all deployed WebMCP 
 ```
 
 `run_evals.sh` intentionally remains limited to trajectory-based `browser` evaluations. It does
-not run simulations implicitly because simulations use three model roles and case-specific
+not run simulations implicitly because simulations use two or three model roles and case-specific
 budgets. Run `simulate` explicitly with the command shown above when that additional cost and
 non-determinism are intended.
 

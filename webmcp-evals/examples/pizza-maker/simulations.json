@@ -4,6 +4,40 @@
     "userScenario": "You are making pizza for five people. You want a pesto pizza with extra sauce, cheese, mushrooms, and bell peppers. Once it is ready, you want a link you can send to everyone. Describe the result you want naturally; do not mention tool names, argument names, or emoji values.",
     "maxTurns": 8,
     "maxDurationMs": 180000,
+    "assertions": [
+      {
+        "type": "dom",
+        "selector": "#size-text",
+        "expect": { "text": "Large" }
+      },
+      {
+        "type": "dom",
+        "selector": "html",
+        "expect": {
+          "attribute": { "name": "style", "value": { "$contains": "--sauce: #388e3c" } }
+        }
+      },
+      {
+        "type": "dom",
+        "selector": "#sauce-layer",
+        "expect": { "attribute": { "name": "style", "value": { "$contains": "display: block" } } }
+      },
+      {
+        "type": "dom",
+        "selector": "#cheese-layer",
+        "expect": { "attribute": { "name": "style", "value": { "$contains": "display: block" } } }
+      },
+      {
+        "type": "dom",
+        "selector": ".topping[data-emoji='🍄']",
+        "expect": { "count": { "$gte": 1 } }
+      },
+      {
+        "type": "dom",
+        "selector": ".topping[data-emoji='🫑']",
+        "expect": { "count": { "$gte": 1 } }
+      }
+    ],
     "successCriteria": "A Large Pesto pizza suitable for five people was created with sauce and cheese layers, mushrooms, and bell peppers, and a share URL was produced after those choices were applied. A different size or style, a missing requested layer or topping, or sharing before the requested pizza was ready is not success. Tool results must corroborate the outcome."
   },
   {
