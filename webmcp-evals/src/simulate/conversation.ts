@@ -56,7 +56,11 @@ export type ConversationResult = {
  */
 export type ConversationDependencies = {
   runAgentTurn?: (request: AgentTurnRequest) => Promise<AgentTurnResult>;
-  simulateUserTurn?: (request: UserTurnRequest, model: LanguageModel) => Promise<UserTurnResult>;
+  simulateUserTurn?: (
+    request: UserTurnRequest,
+    model: LanguageModel,
+    abortSignal: AbortSignal,
+  ) => Promise<UserTurnResult>;
 };
 
 /**
@@ -105,14 +109,24 @@ export async function runConversation(
         break;
       }
 
-      const userReply = await withTimeout(
-        userTurn(
-          { userScenario: request.userScenario, transcript: userVisibleTranscript(turns) },
-          request.userModel,
-        ),
-        remainingMs(),
-        "the simulated user",
-      );
+      const userController = new AbortController();
+      let userReply: UserTurnResult;
+      try {
+        userReply = await withTimeout(
+          userTurn(
+            { userScenario: request.userScenario, transcript: userVisibleTranscript(turns) },
+            request.userModel,
+            userController.signal,
+          ),
+          remainingMs(),
+          "the simulated user",
+        );
+      } catch (thrown) {
+        // A timed-out model call may still be running after Promise.race has
+        // settled. Cancel it before the conversation moves on or returns.
+        userController.abort();
+        throw thrown;
+      }
 
       if (userReply.done) {
         closingMessage = userReply.message;

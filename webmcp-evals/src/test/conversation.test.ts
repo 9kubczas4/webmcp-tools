@@ -127,6 +127,25 @@ describe("runConversation", () => {
     assert.strictEqual(signal!.aborted, true);
   });
 
+  it("aborts the simulated user request it walked away from", async () => {
+    let signal: AbortSignal | undefined;
+    const stuckUser = async (
+      _userRequest: UserTurnRequest,
+      _model: unknown,
+      abortSignal?: AbortSignal,
+    ): Promise<UserTurnResult> => {
+      signal = abortSignal;
+      return await new Promise(() => {});
+    };
+    const agent = agentReplying("never reached");
+
+    const result = await runConversation(request({ maxDurationMs: 60 }), deps(stuckUser, agent.fn));
+
+    assert.strictEqual(result.endedBy, "timeout");
+    assert.ok(signal, "the simulated user should have been given a signal");
+    assert.strictEqual(signal!.aborted, true);
+  });
+
   it("reports an agent failure as an error, with the steps it managed first", async () => {
     const user = scriptedUser([{ message: "I need a jacket.", done: false }]);
     const agent = agentReplying("", {

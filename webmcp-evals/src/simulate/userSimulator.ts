@@ -72,8 +72,14 @@ export function parseSimulatedUserReply(text: string): UserTurnResult {
 export async function simulateUserTurn(
   request: UserTurnRequest,
   model: LanguageModel,
+  abortSignal?: AbortSignal,
 ): Promise<UserTurnResult> {
   const { system, messages } = buildUserSimulatorMessages(request);
-  const generated = await generateText({ model, system, messages });
+  const generated = await generateText({
+    model,
+    system,
+    messages,
+    ...(abortSignal ? { abortSignal } : {}),
+  });
   return parseSimulatedUserReply(generated.text || "");
 }

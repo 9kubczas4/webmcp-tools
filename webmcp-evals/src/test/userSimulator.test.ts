@@ -150,6 +150,15 @@ describe("simulateUserTurn", () => {
     assert.strictEqual(result.done, true);
     assert.strictEqual(result.message, "Got it, thanks.");
   });
+
+  it("forwards the abort signal to the model request", async () => {
+    const model = mockModelReplying("Something in leather, for a concert.");
+    const controller = new AbortController();
+
+    await simulateUserTurn({ userScenario: SCENARIO, transcript: [] }, model, controller.signal);
+
+    assert.strictEqual(model.doGenerateCalls[0].abortSignal, controller.signal);
+  });
 });
 
 function escapeRegExp(value: string): string {
