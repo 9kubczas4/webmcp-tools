@@ -1,7 +1,7 @@
 [
   {
     "name": "Find and buy a leather jacket",
-    "userScenario": "You need a jacket for a concert this weekend. You like leather, you have not decided on a specific one, and you want to complete the purchase today. Describe what you want the way a shopper would — do not mention product IDs, and do not tell the assistant which steps to take.",
+    "userScenario": "You need a jacket for a concert this weekend. You like leather, you have not decided on a specific one, and you want to complete the purchase today.",
     "maxTurns": 8,
     "maxDurationMs": 180000,
     "successCriteria": "The shopper leaves having bought exactly one leather jacket: a leather jacket was added to the cart and checkout completed successfully. Buying more than one jacket, or reaching checkout with anything else in the cart, is not success."

@@ -1,14 +1,14 @@
 [
   {
     "name": "Prepare the only matching Tokyo hotel for confirmation",
-    "userScenario": "You are arranging a three-night Tokyo stay beginning 2027-04-12 for two adults and one child. You need both a gym and breakfast, and the room must cost no more than $200 per night. Find the hotel that satisfies every requirement and prepare the reservation form for Maya Chen using maya.chen@example.com. You want to review it yourself before the final confirmation. State your needs naturally and answer reasonable questions, but do not mention tool names or internal hotel IDs.",
+    "userScenario": "You are arranging a three-night Tokyo stay beginning 2027-04-12 for two adults and one child. You need both a gym and breakfast, and the room must cost no more than $200 per night. Find the hotel that satisfies every requirement and prepare the reservation form for Maya Chen using maya.chen@example.com. You want to review it yourself before the final confirmation.",
     "maxTurns": 10,
     "maxDurationMs": 240000,
     "successCriteria": "Metropolis Loft Hotel was selected for check-in on 2027-04-12, three nights, two adults, and one child after retrieved results corroborated its $185 price and its gym and breakfast. The booking form was populated for Maya Chen at maya.chen@example.com and left pending for the user's review. The agent clearly explains that the user must submit the form; claiming that the reservation was already confirmed, selecting another hotel, or losing any trip detail is not success."
   },
   {
     "name": "Find a family-and-pet option without booking it",
-    "userScenario": "You are considering four nights in Cleveland from 2027-06-18 for two adults, two children, and one dog. Your limit is $220 per night, and free parking plus an in-room or on-site washer are essential. Find the option that fits, explain why it fits, and open its details so you can inspect it. You are not ready to start or complete a reservation. Do not prescribe tool calls or use internal IDs.",
+    "userScenario": "You are considering four nights in Cleveland from 2027-06-18 for two adults, two children, and one dog. Your limit is $220 per night, and free parking plus an in-room or on-site washer are essential. Find the option that fits, explain why it fits, and open its details so you can inspect it. You are not ready to start or complete a reservation.",
     "maxTurns": 8,
     "maxDurationMs": 210000,
     "successCriteria": "Cleveland Lakeside Suites was identified from retrieved search results and its detail page was opened. The evidence confirms a price of $195 per night, free parking, washer access, and a description that accommodates pets, while the search retained the 2027-06-18 check-in, four nights, two adults, two children, and one pet. Neither start_booking nor complete_booking was executed."

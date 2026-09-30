@@ -259,6 +259,10 @@ Each simulation describes the user rather than pre-authoring their messages. A c
 Optional `setup` calls establish initial world state before the conversation and are labelled
 separately in reports so they are never credited to the agent.
 
+Keep `userScenario` focused on the person's situation, preferences, and desired outcome. The
+simulated-user prompt already controls how the person speaks and prevents references to tools,
+internal IDs, and implementation steps, so scenarios should not repeat those instructions.
+
 ```json
 [
   {
@@ -298,7 +302,7 @@ Field reference:
 | ----------------- | -------- | --------------------------------------------------------------- |
 | `name`            | No       | Report label; defaults to `Simulation N`                        |
 | `setup`           | No       | Ordered concrete tool calls run before the conversation         |
-| `userScenario`    | Yes      | Brief supplied only to the simulated user                       |
+| `userScenario`    | Yes      | User context, preferences, and desired outcome                   |
 | `maxTurns`        | No       | Positive exchange limit; defaults to `1`                        |
 | `maxDurationMs`   | No       | Positive wall-clock budget; falls back to the CLI value         |
 | `assertions`      | No\*     | Non-empty list of deterministic checks against the final DOM    |
