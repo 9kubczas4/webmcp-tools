@@ -328,6 +328,7 @@ describe("executeSimulations", () => {
       config(),
       undefined,
       deps({
+        models: { agent: "test-agent", user: "test-user" },
         launchBrowser: async () => new FakeBrowser() as unknown as Browser,
         evaluateDomAssertions: async (_page, assertions) => [
           {
@@ -348,6 +349,46 @@ describe("executeSimulations", () => {
     assert.strictEqual(judgeCalls, 0);
     assert.strictEqual(results.results[0].assertionResults?.[0].outcome, "pass");
     assert.strictEqual(results.results[0].conversation?.turns.length, 1);
+  });
+
+  it("runs the optional judge only after every DOM assertion passes", async () => {
+    let judgeCalls = 0;
+
+    const results = await executeSimulations(
+      [
+        simulation({
+          assertions: [
+            {
+              type: "dom",
+              selector: "[data-testid='cart']",
+              expect: { count: 1 },
+            },
+          ],
+        }),
+      ],
+      config(),
+      undefined,
+      deps({
+        launchBrowser: async () => new FakeBrowser() as unknown as Browser,
+        evaluateDomAssertions: async (_page, assertions) => [
+          {
+            assertion: assertions[0],
+            outcome: "pass",
+            expected: 1,
+            actual: 1,
+          },
+        ],
+        judgeSimulation: async () => {
+          judgeCalls++;
+          return verdict({ passed: false, reasoning: "The transcript does not prove checkout." });
+        },
+      }),
+    );
+
+    assert.strictEqual(results.failCount, 1);
+    assert.strictEqual(judgeCalls, 1);
+    assert.strictEqual(results.results[0].assertionResults?.[0].outcome, "pass");
+    assert.strictEqual(results.results[0].verdict?.passed, false);
   });
 
   it("fails deterministically and skips the judge when a DOM assertion does not match", async () => {
@@ -567,6 +608,16 @@ describe("executeSimulations", () => {
 });
 
 describe("resolveSimulationModels", () => {
+  it("omits the judge model when no simulation asks for an LLM verdict", () => {
+    const models = resolveSimulationModels(config({ model: "gemini-3-flash-preview" }), {
+      includeJudge: false,
+    });
+
+    assert.ok(models.agent);
+    assert.ok(models.user);
+    assert.ok(!("judge" in models));
+  });
+
   it("defaults the user to the agent's model and the judge to the analyzer's", () => {
     const models = resolveSimulationModels(config({ model: "gemini-3-flash-preview" }));
 

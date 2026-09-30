@@ -109,6 +109,9 @@ export type SimulationModels = {
   judge: LanguageModel;
 };
 
+export type SimulationActorModels = Pick<SimulationModels, "agent" | "user">;
+type AvailableSimulationModels = SimulationActorModels & Partial<Pick<SimulationModels, "judge">>;
+
 /**
  * Injection points for tests, following `SmokeDependencies`. `runConversation`
  * and `judgeSimulation` are replaceable so the lifecycle above them can be
@@ -123,7 +126,7 @@ export type SimulationDependencies = {
     page: BrowserPage,
     assertions: DomAssertion[],
   ) => Promise<DomAssertionResult[]>;
-  models?: SimulationModels;
+  models?: SimulationActorModels | SimulationModels;
 };
 
 function messageOf(error: unknown): string {
@@ -143,11 +146,24 @@ function resolveOne(config: SimulationConfig, modelId: string): LanguageModel {
   });
 }
 
-export function resolveSimulationModels(config: SimulationConfig): SimulationModels {
+export function resolveSimulationModels(
+  config: SimulationConfig,
+  options: { includeJudge: false },
+): SimulationActorModels;
+export function resolveSimulationModels(
+  config: SimulationConfig,
+  options?: { includeJudge?: true },
+): SimulationModels;
+export function resolveSimulationModels(
+  config: SimulationConfig,
+  options: { includeJudge?: boolean } = {},
+): AvailableSimulationModels {
   return {
     agent: resolveOne(config, config.model),
     user: resolveOne(config, config.userModel || config.model),
-    judge: resolveOne(config, config.judgeModel || ANALYZER_MODEL_DEFAULT),
+    ...(options.includeJudge === false
+      ? {}
+      : { judge: resolveOne(config, config.judgeModel || ANALYZER_MODEL_DEFAULT) }),
   };
 }
 
@@ -156,7 +172,7 @@ async function runOneSimulation(
   runIndex: number,
   browser: Browser,
   config: SimulationConfig,
-  models: SimulationModels,
+  models: AvailableSimulationModels,
   dependencies: Required<Pick<SimulationDependencies, "createRegistry">> & SimulationDependencies,
 ): Promise<SimulationResult> {
   const conversationOf = dependencies.runConversation || runConversation;
@@ -295,6 +311,19 @@ async function runOneSimulation(
       };
     }
 
+    if (!models.judge) {
+      return {
+        simulation,
+        runIndex,
+        outcome: "error",
+        ...(setupCalls ? { setupCalls } : {}),
+        conversation,
+        ...(assertionResults ? { assertionResults } : {}),
+        error: "the simulation defines LLM success criteria, but no judge model is available",
+        ...consoleErrors(),
+      };
+    }
+
     const verdict = await judgeOf(
       {
         successCriteria: simulation.successCriteria,
@@ -339,7 +368,12 @@ export async function executeSimulations(
   }
 
   const runs = config.runs || 1;
-  const models = dependencies.models || resolveSimulationModels(config);
+  const needsJudge = simulations.some((simulation) => Boolean(simulation.successCriteria));
+  const models =
+    dependencies.models ||
+    (needsJudge
+      ? resolveSimulationModels(config)
+      : resolveSimulationModels(config, { includeJudge: false }));
   const openBrowser =
     dependencies.launchBrowser || (async () => await launchBrowser(config.chromeChannel));
   const createRegistry =
