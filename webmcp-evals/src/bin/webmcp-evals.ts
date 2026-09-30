@@ -115,7 +115,7 @@ program
   )
   .option(
     "--timeout <milliseconds>",
-    "Timeout per navigation or setup tool call",
+    "Timeout per navigation, setup tool call, or judge request",
     positiveInteger,
     30000,
   )

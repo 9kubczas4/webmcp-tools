@@ -257,4 +257,17 @@ describe("judgeSimulation", () => {
     assert.ok(sent.includes("Tool results are evidence"), "the rubric should reach the model");
     assert.ok(sent.includes("Take the hat out"), "the transcript should reach the model");
   });
+
+  it("forwards the abort signal to the model request", async () => {
+    const model = mockModelReplying(verdictText());
+    const controller = new AbortController();
+
+    await judgeSimulation(
+      { successCriteria: CRITERIA, conversation: conversation() },
+      model,
+      controller.signal,
+    );
+
+    assert.strictEqual(model.doGenerateCalls[0].abortSignal, controller.signal);
+  });
 });

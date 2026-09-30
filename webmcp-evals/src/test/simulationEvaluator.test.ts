@@ -531,6 +531,35 @@ describe("executeSimulations", () => {
     assert.strictEqual(result.assertionResults?.[0].actual, 1);
   });
 
+  it("times out and cancels the judge while keeping the conversation evidence", async () => {
+    let judgeSignal: AbortSignal | undefined;
+
+    const results = await executeSimulations(
+      [simulation()],
+      config({ timeoutMs: 5 }),
+      undefined,
+      deps({
+        launchBrowser: async () => new FakeBrowser() as unknown as Browser,
+        judgeSimulation: async (_request, _model, abortSignal) => {
+          judgeSignal = abortSignal;
+          return await new Promise<SimulationVerdict>((_resolve, reject) => {
+            abortSignal.addEventListener(
+              "abort",
+              () => reject(abortSignal.reason || new Error("judge aborted")),
+              { once: true },
+            );
+          });
+        },
+      }),
+    );
+
+    const [result] = results.results;
+    assert.strictEqual(result.outcome, "error");
+    assert.match(result.error || "", /judge timed out after 5 ms/i);
+    assert.strictEqual(result.conversation?.turns[0].agentText, "Removed.");
+    assert.strictEqual(judgeSignal?.aborted, true);
+  });
+
   it("keeps going through the remaining cases after one errors", async () => {
     let call = 0;
 

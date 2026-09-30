@@ -64,7 +64,7 @@ export type SimulationConfig = {
    * happens to be running it.
    */
   maxDurationMs?: number;
-  /** Per-tool-call timeout for `setup`, and for page navigation. */
+  /** Per-operation timeout for `setup`, page navigation, and the LLM judge. */
   timeoutMs?: number;
   debug?: boolean;
   verbose?: boolean;

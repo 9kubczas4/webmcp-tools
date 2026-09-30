@@ -28,7 +28,7 @@ import {
   runConversation,
 } from "../simulate/conversation.js";
 import { judgeSimulation, JudgeRequest } from "../simulate/judge.js";
-import { ToolCallOutcome, runToolCallSequence } from "../simulate/toolSequence.js";
+import { ToolCallOutcome, runToolCallSequence, withTimeout } from "../simulate/toolSequence.js";
 import { DomAssertionResult, evaluateDomAssertions } from "../simulate/domAssertions.js";
 import {
   Browser,
@@ -50,7 +50,7 @@ export const DEFAULT_MAX_DURATION_MS = 300_000;
  */
 export const DEFAULT_MAX_STEPS = 6;
 
-/** Per-tool-call ceiling for `setup`, and for the initial page load. */
+/** Per-operation ceiling for `setup`, the initial page load, and the judge. */
 export const DEFAULT_TIMEOUT_MS = 30_000;
 
 export type SimulationResult = {
@@ -121,7 +121,11 @@ export type SimulationDependencies = {
   launchBrowser?: () => Promise<Browser>;
   createRegistry?: (page: BrowserPage) => SimulationRegistry;
   runConversation?: (request: ConversationRequest) => Promise<ConversationResult>;
-  judgeSimulation?: (request: JudgeRequest, model: LanguageModel) => Promise<SimulationVerdict>;
+  judgeSimulation?: (
+    request: JudgeRequest,
+    model: LanguageModel,
+    abortSignal: AbortSignal,
+  ) => Promise<SimulationVerdict>;
   evaluateDomAssertions?: (
     page: BrowserPage,
     assertions: DomAssertion[],
@@ -325,14 +329,29 @@ async function runOneSimulation(
       };
     }
 
-    const verdict = await judgeOf(
-      {
-        successCriteria: simulation.successCriteria,
-        conversation,
-        ...(setupCalls ? { setupCalls } : {}),
-      },
-      models.judge,
-    );
+    const judgeController = new AbortController();
+    let verdict: SimulationVerdict;
+    try {
+      verdict = await withTimeout(
+        judgeOf(
+          {
+            successCriteria: simulation.successCriteria,
+            conversation,
+            ...(setupCalls ? { setupCalls } : {}),
+          },
+          models.judge,
+          judgeController.signal,
+        ),
+        timeoutMs,
+        "the judge",
+      );
+    } catch (error) {
+      // Stop the provider request when the harness stops waiting for it. This
+      // prevents a timed-out judge from continuing to consume tokens while the
+      // next simulation is already running.
+      judgeController.abort();
+      throw error;
+    }
 
     return {
       simulation,

@@ -142,12 +142,14 @@ export function buildJudgePrompt(request: JudgeRequest): string {
 export async function judgeSimulation(
   request: JudgeRequest,
   model: LanguageModel,
+  abortSignal?: AbortSignal,
 ): Promise<SimulationVerdict> {
   const generated = await generateObject({
     model,
     schema: verdictSchema,
     system: JUDGE_SYSTEM_PROMPT,
     prompt: buildJudgePrompt(request),
+    ...(abortSignal ? { abortSignal } : {}),
   });
 
   const { reasoning, evidence, passed } = generated.object;
