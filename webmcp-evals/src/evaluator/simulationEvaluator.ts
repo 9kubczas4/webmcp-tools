@@ -231,6 +231,18 @@ async function runOneSimulation(
       };
     }
 
+    if (!simulation.successCriteria) {
+      return {
+        simulation,
+        runIndex,
+        outcome: "error",
+        ...(setupCalls ? { setupCalls } : {}),
+        conversation,
+        error: "deterministic DOM assertions are configured but are not executable yet",
+        ...consoleErrors(),
+      };
+    }
+
     const verdict = await judgeOf(
       {
         successCriteria: simulation.successCriteria,

@@ -17,14 +17,49 @@ export type Simulation = {
   // that knows the answer hands it to the agent and the case passes for the
   // wrong reason.
   userScenario: string;
-  maxTurns: number;
+  // Defaults to one. Values above one matter when a simulated user is enabled.
+  maxTurns?: number;
   // Wall-clock budget for the whole conversation. Falls back to the CLI
   // default when omitted. `maxTurns` cannot bound a turn that stalls inside a
   // tool call; this can.
   maxDurationMs?: number;
-  // One prose statement of the intended outcome, weighed whole by the judge
-  // rather than scored item by item.
-  successCriteria: string;
+  // Deterministic checks against the final page state.
+  assertions?: DomAssertion[];
+  // Optional prose outcome weighed whole by an LLM judge. A simulation must
+  // define assertions, successCriteria, or both.
+  successCriteria?: string;
+};
+
+type AtLeastOne<T> = {
+  [Key in keyof T]-?: Required<Pick<T, Key>> & Partial<Omit<T, Key>>;
+}[keyof T];
+
+export type AssertionMatcher = AtLeastOne<{
+  $any?: true;
+  $contains?: string;
+  $gt?: number;
+  $gte?: number;
+  $lt?: number;
+  $lte?: number;
+  $pattern?: string;
+  $type?: "string" | "number" | "boolean" | "array" | "object" | "null";
+}>;
+
+export type DomAssertionExpectation =
+  | { exists: boolean }
+  | { count: number | AssertionMatcher }
+  | { text: string | AssertionMatcher }
+  | {
+      attribute: {
+        name: string;
+        value: string | null | AssertionMatcher;
+      };
+    };
+
+export type DomAssertion = {
+  type: "dom";
+  selector: string;
+  expect: DomAssertionExpectation;
 };
 
 /**
@@ -38,8 +73,11 @@ export type SimulationSetupCall = {
   arguments: Record<string, unknown>;
 };
 
-/** A simulation with its reporting name resolved, as the loader returns it. */
-export type LoadedSimulation = Simulation & { name: string };
+/** A simulation with loader defaults and its reporting name resolved. */
+export type LoadedSimulation = Omit<Simulation, "name" | "maxTurns"> & {
+  name: string;
+  maxTurns: number;
+};
 
 /**
  * Why a conversation stopped. Reported beside the verdict, never in place of

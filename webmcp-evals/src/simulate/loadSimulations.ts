@@ -5,7 +5,13 @@
 
 import { readFile } from "fs/promises";
 import { resolve } from "path";
-import { LoadedSimulation, SimulationSetupCall } from "../types/simulations.js";
+import {
+  AssertionMatcher,
+  DomAssertion,
+  DomAssertionExpectation,
+  LoadedSimulation,
+  SimulationSetupCall,
+} from "../types/simulations.js";
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -17,6 +23,37 @@ function isPositiveInteger(value: unknown): value is number {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+const SUPPORTED_MATCHERS = new Set([
+  "$any",
+  "$contains",
+  "$gt",
+  "$gte",
+  "$lt",
+  "$lte",
+  "$pattern",
+  "$type",
+]);
+
+function isMatcher(value: unknown): value is AssertionMatcher {
+  if (!isPlainObject(value)) return false;
+  const keys = Object.keys(value);
+  if (keys.length === 0 || !keys.every((key) => SUPPORTED_MATCHERS.has(key))) return false;
+
+  return keys.every((key) => {
+    const operand = value[key];
+    if (key === "$any") return operand === true;
+    if (key === "$contains" || key === "$pattern") return typeof operand === "string";
+    if (["$gt", "$gte", "$lt", "$lte"].includes(key)) {
+      return typeof operand === "number" && Number.isFinite(operand);
+    }
+    return (
+      key === "$type" &&
+      typeof operand === "string" &&
+      ["string", "number", "boolean", "array", "object", "null"].includes(operand)
+    );
+  });
 }
 
 /**
@@ -75,6 +112,96 @@ function parseSetup(raw: unknown, label: string): SimulationSetupCall[] | undefi
   });
 }
 
+function parseExpectation(raw: unknown, label: string): DomAssertionExpectation {
+  if (!isPlainObject(raw)) {
+    throw new Error(`${label}: "expect" must be an object.`);
+  }
+
+  const expectationKeys = ["exists", "count", "text", "attribute"];
+  const selected = Object.keys(raw).filter((key) => expectationKeys.includes(key));
+  if (selected.length !== 1 || Object.keys(raw).length !== 1) {
+    throw new Error(
+      `${label}: "expect" must define exactly one of ${expectationKeys
+        .map((key) => `"${key}"`)
+        .join(", ")}.`,
+    );
+  }
+
+  const key = selected[0];
+  const value = raw[key];
+  if (key === "exists") {
+    if (typeof value !== "boolean") {
+      throw new Error(`${label}: "exists" must be a boolean.`);
+    }
+    return { exists: value };
+  }
+
+  if (key === "count") {
+    if (
+      !(typeof value === "number" && Number.isInteger(value) && value >= 0) &&
+      !isMatcher(value)
+    ) {
+      throw new Error(`${label}: "count" must be a non-negative integer or matcher object.`);
+    }
+    return { count: value };
+  }
+
+  if (key === "text") {
+    if (typeof value !== "string" && !isMatcher(value)) {
+      throw new Error(`${label}: "text" must be a string or matcher object.`);
+    }
+    return { text: value };
+  }
+
+  if (!isPlainObject(value)) {
+    throw new Error(`${label}: "attribute" must be an object.`);
+  }
+  rejectUnusedKeys(value, ["name", "value"], `${label} attribute expectation`);
+  if (!isNonEmptyString(value.name)) {
+    throw new Error(`${label} attribute expectation must have a non-empty "name".`);
+  }
+  if (!Object.prototype.hasOwnProperty.call(value, "value")) {
+    throw new Error(`${label} attribute expectation must define "value".`);
+  }
+  if (typeof value.value !== "string" && value.value !== null && !isMatcher(value.value)) {
+    throw new Error(
+      `${label} attribute expectation "value" must be a string, null, or matcher object.`,
+    );
+  }
+  return {
+    attribute: {
+      name: value.name.trim(),
+      value: value.value,
+    },
+  };
+}
+
+function parseAssertions(raw: unknown, label: string): DomAssertion[] | undefined {
+  if (raw === undefined) return undefined;
+  if (!Array.isArray(raw) || raw.length === 0) {
+    throw new Error(`${label}: "assertions" must be a non-empty array.`);
+  }
+
+  return raw.map((entry, index) => {
+    const assertionLabel = `${label} assertion #${index + 1}`;
+    if (!isPlainObject(entry)) {
+      throw new Error(`${assertionLabel} must be an object.`);
+    }
+    rejectUnusedKeys(entry, ["type", "selector", "expect"], assertionLabel);
+    if (entry.type !== "dom") {
+      throw new Error(`${assertionLabel}: "type" must be "dom".`);
+    }
+    if (!isNonEmptyString(entry.selector)) {
+      throw new Error(`${assertionLabel} must have a non-empty "selector".`);
+    }
+    return {
+      type: "dom",
+      selector: entry.selector.trim(),
+      expect: parseExpectation(entry.expect, assertionLabel),
+    };
+  });
+}
+
 /**
  * Validates a whole simulation file before anything is executed, the way
  * `compileSmokeTests` does: a bad case at the end of the file must not be
@@ -88,13 +215,21 @@ export function parseSimulations(raw: unknown, fileLabel: string): LoadedSimulat
     throw new Error(`${fileLabel}: contains no simulations.`);
   }
 
-  return raw.map((entry, index) => {
+  const simulations = raw.map((entry, index) => {
     const position = `${fileLabel}: simulation #${index + 1}`;
     if (!isPlainObject(entry)) {
       throw new Error(`${position} must be an object.`);
     }
 
-    const { name: rawName, userScenario, successCriteria, maxTurns, maxDurationMs, setup } = entry;
+    const {
+      name: rawName,
+      userScenario,
+      successCriteria,
+      assertions,
+      maxTurns,
+      maxDurationMs,
+      setup,
+    } = entry;
 
     if (rawName !== undefined && !isNonEmptyString(rawName)) {
       throw new Error(`${position}: "name" must be a non-empty string when present.`);
@@ -114,12 +249,13 @@ export function parseSimulations(raw: unknown, fileLabel: string): LoadedSimulat
           "State the intended outcome as one paragraph the judge weighs whole.",
       );
     }
-    if (!isNonEmptyString(successCriteria)) {
-      throw new Error(`${label}: "successCriteria" must be a non-empty string.`);
+    if (successCriteria !== undefined && !isNonEmptyString(successCriteria)) {
+      throw new Error(`${label}: "successCriteria" must be a non-empty string when present.`);
     }
-    if (!isPositiveInteger(maxTurns)) {
-      throw new Error(`${label}: "maxTurns" must be a positive integer.`);
+    if (maxTurns !== undefined && !isPositiveInteger(maxTurns)) {
+      throw new Error(`${label}: "maxTurns" must be a positive integer when present.`);
     }
+    const turnBudget = maxTurns === undefined ? 1 : maxTurns;
     let durationBudget: number | undefined;
     if (maxDurationMs !== undefined) {
       if (!isPositiveInteger(maxDurationMs)) {
@@ -130,7 +266,15 @@ export function parseSimulations(raw: unknown, fileLabel: string): LoadedSimulat
 
     rejectUnusedKeys(
       entry,
-      ["name", "setup", "userScenario", "maxTurns", "maxDurationMs", "successCriteria"],
+      [
+        "name",
+        "setup",
+        "userScenario",
+        "assertions",
+        "maxTurns",
+        "maxDurationMs",
+        "successCriteria",
+      ],
       label,
       {
         messages: "a simulation generates its own user; it has no authored conversation",
@@ -139,16 +283,34 @@ export function parseSimulations(raw: unknown, fileLabel: string): LoadedSimulat
     );
 
     const setupCalls = parseSetup(setup, label);
+    const parsedAssertions = parseAssertions(assertions, label);
+    if (!parsedAssertions && successCriteria === undefined) {
+      throw new Error(`${label} must define at least one of "assertions" or "successCriteria".`);
+    }
 
     return {
       name,
       userScenario: userScenario.trim(),
-      successCriteria: successCriteria.trim(),
-      maxTurns,
+      ...(isNonEmptyString(successCriteria) ? { successCriteria: successCriteria.trim() } : {}),
+      ...(parsedAssertions ? { assertions: parsedAssertions } : {}),
+      maxTurns: turnBudget,
       ...(durationBudget !== undefined ? { maxDurationMs: durationBudget } : {}),
       ...(setupCalls ? { setup: setupCalls } : {}),
     };
   });
+
+  const firstPositionByName = new Map<string, number>();
+  for (const [index, simulation] of simulations.entries()) {
+    const firstPosition = firstPositionByName.get(simulation.name);
+    if (firstPosition !== undefined) {
+      throw new Error(
+        `${fileLabel}: simulations #${firstPosition} and #${index + 1} use the duplicate name "${simulation.name}".`,
+      );
+    }
+    firstPositionByName.set(simulation.name, index + 1);
+  }
+
+  return simulations;
 }
 
 export async function loadSimulations(path: string): Promise<LoadedSimulation[]> {

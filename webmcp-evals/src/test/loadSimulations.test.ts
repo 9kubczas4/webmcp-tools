@@ -54,6 +54,175 @@ describe("parseSimulations", () => {
     ]);
   });
 
+  it("parses supported DOM assertions", () => {
+    const parsed = parseSimulations(
+      [
+        validCase({
+          assertions: [
+            {
+              type: "dom",
+              selector: "[data-product-id='p3']",
+              expect: { exists: false },
+            },
+            {
+              type: "dom",
+              selector: "[data-testid='cart-item']",
+              expect: { count: { $gte: 1 } },
+            },
+            {
+              type: "dom",
+              selector: "[data-testid='status']",
+              expect: { text: { $contains: "Completed" } },
+            },
+            {
+              type: "dom",
+              selector: "[data-testid='checkout']",
+              expect: { attribute: { name: "data-state", value: "completed" } },
+            },
+          ],
+        }),
+      ],
+      FILE,
+    );
+
+    assert.deepStrictEqual(parsed[0].assertions, [
+      {
+        type: "dom",
+        selector: "[data-product-id='p3']",
+        expect: { exists: false },
+      },
+      {
+        type: "dom",
+        selector: "[data-testid='cart-item']",
+        expect: { count: { $gte: 1 } },
+      },
+      {
+        type: "dom",
+        selector: "[data-testid='status']",
+        expect: { text: { $contains: "Completed" } },
+      },
+      {
+        type: "dom",
+        selector: "[data-testid='checkout']",
+        expect: { attribute: { name: "data-state", value: "completed" } },
+      },
+    ]);
+  });
+
+  it("allows deterministic assertions without an LLM judge", () => {
+    const deterministic = validCase({
+      assertions: [
+        {
+          type: "dom",
+          selector: "[data-testid='cart']",
+          expect: { exists: true },
+        },
+      ],
+    });
+    delete deterministic.successCriteria;
+    delete deterministic.maxTurns;
+
+    const [parsed] = parseSimulations([deterministic], FILE);
+
+    assert.strictEqual(parsed.successCriteria, undefined);
+    assert.strictEqual(parsed.maxTurns, 1);
+  });
+
+  it("requires assertions, successCriteria, or both", () => {
+    const ungradable = validCase();
+    delete ungradable.successCriteria;
+
+    assert.throws(
+      () => parseSimulations([ungradable], FILE),
+      /must define at least one of "assertions" or "successCriteria"/,
+    );
+  });
+
+  it("rejects malformed DOM assertions", () => {
+    const cases = [
+      {
+        assertions: [],
+        message: /"assertions" must be a non-empty array/,
+      },
+      {
+        assertions: [{ type: "visual", selector: "body", expect: { exists: true } }],
+        message: /assertion #1: "type" must be "dom"/,
+      },
+      {
+        assertions: [{ type: "dom", selector: "   ", expect: { exists: true } }],
+        message: /assertion #1 must have a non-empty "selector"/,
+      },
+      {
+        assertions: [
+          {
+            type: "dom",
+            selector: "body",
+            expect: { exists: true, count: 1 },
+          },
+        ],
+        message: /assertion #1: "expect" must define exactly one of/,
+      },
+      {
+        assertions: [
+          {
+            type: "dom",
+            selector: "body",
+            expect: { attribute: { name: "", value: "ready" } },
+          },
+        ],
+        message: /attribute expectation must have a non-empty "name"/,
+      },
+      {
+        assertions: [
+          {
+            type: "dom",
+            selector: "body",
+            expect: { count: { $gte: "1" } },
+          },
+        ],
+        message: /"count" must be a non-negative integer or matcher object/,
+      },
+      {
+        assertions: [
+          {
+            type: "dom",
+            selector: "body",
+            expect: { text: { $unknown: "ready" } },
+          },
+        ],
+        message: /"text" must be a string or matcher object/,
+      },
+      {
+        assertions: [
+          {
+            type: "dom",
+            selector: "body",
+            expect: { text: { $any: false } },
+          },
+        ],
+        message: /"text" must be a string or matcher object/,
+      },
+    ];
+
+    for (const testCase of cases) {
+      assert.throws(
+        () => parseSimulations([validCase({ assertions: testCase.assertions })], FILE),
+        testCase.message,
+      );
+    }
+  });
+
+  it("rejects duplicate resolved simulation names", () => {
+    assert.throws(
+      () =>
+        parseSimulations(
+          [validCase({ name: "Same case" }), validCase({ name: " Same case " })],
+          FILE,
+        ),
+      /simulations #1 and #2 use the duplicate name "Same case"/,
+    );
+  });
+
   it("keeps setup calls in authored order", () => {
     const parsed = parseSimulations(
       [
@@ -134,25 +303,25 @@ describe("parseSimulations", () => {
     );
   });
 
-  it("rejects a missing or blank successCriteria", () => {
-    const missing = validCase();
-    delete missing.successCriteria;
-
-    assert.throws(() => parseSimulations([missing], FILE), /"successCriteria"/);
+  it("rejects a blank successCriteria when present", () => {
     assert.throws(
       () => parseSimulations([validCase({ successCriteria: "  " })], FILE),
-      /"successCriteria"/,
+      /"successCriteria" must be a non-empty string when present/,
     );
   });
 
-  it("rejects a maxTurns that is not a positive integer", () => {
-    for (const maxTurns of [0, -1, 2.5, "8", undefined]) {
+  it("rejects a maxTurns that is not a positive integer, but defaults its absence", () => {
+    for (const maxTurns of [0, -1, 2.5, "8"]) {
       assert.throws(
         () => parseSimulations([validCase({ maxTurns })], FILE),
-        /"maxTurns" must be a positive integer\./,
+        /"maxTurns" must be a positive integer when present\./,
         `maxTurns=${String(maxTurns)} should be rejected`,
       );
     }
+
+    const withoutMaxTurns = validCase();
+    delete withoutMaxTurns.maxTurns;
+    assert.strictEqual(parseSimulations([withoutMaxTurns], FILE)[0].maxTurns, 1);
   });
 
   it("rejects a maxDurationMs that is not a positive integer, but allows its absence", () => {

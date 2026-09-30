@@ -309,6 +309,39 @@ describe("executeSimulations", () => {
     assert.strictEqual(results.results[0].conversation?.turns.length, 1);
   });
 
+  it("does not send assertion-only simulations to the LLM judge before DOM checks exist", async () => {
+    let judgeCalls = 0;
+
+    const results = await executeSimulations(
+      [
+        simulation({
+          successCriteria: undefined,
+          assertions: [
+            {
+              type: "dom",
+              selector: "[data-testid='cart']",
+              expect: { count: 1 },
+            },
+          ],
+        }),
+      ],
+      config(),
+      undefined,
+      deps({
+        launchBrowser: async () => new FakeBrowser() as unknown as Browser,
+        judgeSimulation: async () => {
+          judgeCalls++;
+          return verdict();
+        },
+      }),
+    );
+
+    assert.strictEqual(results.errorCount, 1);
+    assert.strictEqual(judgeCalls, 0);
+    assert.match(results.results[0].error || "", /DOM assertions.*not executable yet/);
+    assert.strictEqual(results.results[0].conversation?.turns.length, 1);
+  });
+
   it("judges a conversation that ran out of turns, which is not itself a failure", async () => {
     const results = await executeSimulations(
       [simulation()],

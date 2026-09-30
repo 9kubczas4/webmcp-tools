@@ -237,12 +237,14 @@ function renderRun(result: SimulationResult, totalRuns: number): string {
               : ""
           }
           ${
-            result.verdict
+            result.verdict && result.simulation.successCriteria
               ? renderVerdict(result.verdict, result.simulation.successCriteria)
-              : `<div class="bg-white rounded-lg border border-slate-200 p-3">
+              : result.simulation.successCriteria
+                ? `<div class="bg-white rounded-lg border border-slate-200 p-3">
                    <h5 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Success criteria, as authored</h5>
                    <p class="text-sm text-slate-700 whitespace-pre-wrap">${escapeHtml(result.simulation.successCriteria)}</p>
                  </div>`
+                : ""
           }
           ${renderSetupCalls(result.setupCalls)}
           <div class="bg-white rounded-lg border border-slate-200 p-3">
