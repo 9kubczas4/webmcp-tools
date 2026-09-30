@@ -491,6 +491,46 @@ describe("executeSimulations", () => {
     assert.match(results.results[0].error || "", /no evidence/);
   });
 
+  it("keeps setup, conversation, and DOM evidence when the judge throws", async () => {
+    const results = await executeSimulations(
+      [
+        simulation({
+          setup: [{ functionName: "addToCart", arguments: { productId: "p3" } }],
+          assertions: [
+            {
+              type: "dom",
+              selector: "[data-testid='cart-item']",
+              expect: { count: 1 },
+            },
+          ],
+        }),
+      ],
+      config(),
+      undefined,
+      deps({
+        launchBrowser: async () => new FakeBrowser() as unknown as Browser,
+        evaluateDomAssertions: async (_page, assertions) => [
+          {
+            assertion: assertions[0],
+            outcome: "pass",
+            expected: 1,
+            actual: 1,
+          },
+        ],
+        judgeSimulation: async () => {
+          throw new Error("judge service unavailable");
+        },
+      }),
+    );
+
+    const [result] = results.results;
+    assert.strictEqual(result.outcome, "error");
+    assert.match(result.error || "", /judge service unavailable/);
+    assert.strictEqual(result.setupCalls?.length, 1);
+    assert.strictEqual(result.conversation?.turns[0].agentText, "Removed.");
+    assert.strictEqual(result.assertionResults?.[0].actual, 1);
+  });
+
   it("keeps going through the remaining cases after one errors", async () => {
     let call = 0;
 

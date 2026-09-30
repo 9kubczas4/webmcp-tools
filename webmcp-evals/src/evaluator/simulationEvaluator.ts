@@ -182,6 +182,9 @@ async function runOneSimulation(
 
   const page = await browser.newPage();
   let registry: SimulationRegistry | undefined;
+  let setupCalls: ToolCallOutcome[] | undefined;
+  let conversation: ConversationResult | undefined;
+  let assertionResults: DomAssertionResult[] | undefined;
 
   const consoleErrors = () => {
     const errors = registry?.getBrowserConsoleErrors?.() || [];
@@ -210,7 +213,6 @@ async function runOneSimulation(
       };
     }
 
-    let setupCalls: ToolCallOutcome[] | undefined;
     if (simulation.setup?.length) {
       setupCalls = await runToolCallSequence(simulation.setup, registry, { timeoutMs });
       const broken = setupCalls.find((call) => call.outcome === "error");
@@ -229,7 +231,7 @@ async function runOneSimulation(
       }
     }
 
-    const conversation = await conversationOf({
+    conversation = await conversationOf({
       userScenario: simulation.userScenario,
       maxTurns: simulation.maxTurns,
       maxDurationMs: simulation.maxDurationMs || config.maxDurationMs || DEFAULT_MAX_DURATION_MS,
@@ -255,7 +257,6 @@ async function runOneSimulation(
       };
     }
 
-    let assertionResults: DomAssertionResult[] | undefined;
     if (simulation.assertions?.length) {
       assertionResults = await evaluateAssertions(page, simulation.assertions);
       const brokenAssertion = assertionResults.find((result) => result.outcome === "error");
@@ -349,6 +350,9 @@ async function runOneSimulation(
       simulation,
       runIndex,
       outcome: "error",
+      ...(setupCalls ? { setupCalls } : {}),
+      ...(conversation ? { conversation } : {}),
+      ...(assertionResults ? { assertionResults } : {}),
       error: messageOf(error),
       ...consoleErrors(),
     };
