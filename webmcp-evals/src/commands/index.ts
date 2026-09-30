@@ -6,7 +6,7 @@
 import { Command } from "commander";
 import { readFile, writeFile, mkdir } from "fs/promises";
 import { existsSync } from "fs";
-import { resolve, basename, extname, join } from "path";
+import { resolve, basename, extname } from "path";
 import { SingleBar } from "cli-progress";
 import chalk from "chalk";
 import Table from "cli-table3";
@@ -286,16 +286,32 @@ export async function runSmokeCommand(options: CommandOptions, command?: Command
   }
 }
 
-/** How wide a slice of the judge's reasoning fits in a console cell. */
+/** How wide a result summary fits in a console cell. */
 const REASONING_PREVIEW_LENGTH = 64;
 
-/**
- * The first line of the judge's reasoning, cut to fit. A bare `FAIL` with no
- * stated reason sends the reader to the HTML report for every failure, which
- * is a poor trade for one column.
- */
-function summarizeVerdict(result: SimulationResult): string {
-  const text = result.verdict?.reasoning || result.error || "-";
+function formatObservedValue(value: unknown): string {
+  if (typeof value === "string") return JSON.stringify(value);
+  return JSON.stringify(value) ?? String(value);
+}
+
+function assertionKind(result: NonNullable<SimulationResult["assertionResults"]>[number]): string {
+  const expectation = result.assertion.expect;
+  if ("exists" in expectation) return "exists";
+  if ("count" in expectation) return "count";
+  if ("text" in expectation) return "text";
+  return `attribute ${expectation.attribute.name}`;
+}
+
+function summarizeResult(result: SimulationResult): string {
+  const failedAssertion = result.assertionResults?.find(
+    (assertion) => assertion.outcome !== "pass",
+  );
+  const assertionSummary = failedAssertion
+    ? `DOM ${failedAssertion.assertion.selector} ${assertionKind(failedAssertion)}: expected ${formatObservedValue(failedAssertion.expected)}, got ${formatObservedValue(failedAssertion.actual)}`
+    : result.assertionResults?.length
+      ? `${result.assertionResults.length} DOM assertion${result.assertionResults.length === 1 ? "" : "s"} passed`
+      : "-";
+  const text = result.verdict?.reasoning || result.error || assertionSummary;
   const firstLine = text.split("\n")[0].trim();
   return firstLine.length > REASONING_PREVIEW_LENGTH
     ? `${firstLine.slice(0, REASONING_PREVIEW_LENGTH - 1)}…`
@@ -342,7 +358,7 @@ export function generateSimulationSummaryTable(results: SimulationResults): Tabl
         // Neutral on purpose: a run that used its whole turn budget and still
         // achieved the goal is a pass, not a problem (ADR D6).
         chalk.dim(run.verdict?.endedBy || run.conversation?.endedBy || "-"),
-        summarizeVerdict(run),
+        summarizeResult(run),
       ]);
     }
   }
@@ -361,9 +377,7 @@ function printSimulationSummary(results: SimulationResults, url: string): void {
   console.log(
     `\nPassed: ${colour(`${results.passCount}/${total}`)} (${rate}%) ` +
       `across ${results.simulationCount} simulation(s)` +
-      (results.errorCount > 0
-        ? chalk.yellow(` — ${results.errorCount} never reached a verdict`)
-        : "") +
+      (results.errorCount > 0 ? chalk.yellow(` — ${results.errorCount} ended with errors`) : "") +
       "\n",
   );
 }

@@ -4,9 +4,8 @@
  */
 
 /**
- * The HTML report for `simulate`. Its rows are verdicts, not steps: a
- * simulation produces exactly one judgement, and the trajectory that led there
- * is detail behind it rather than the subject (ADR D9).
+ * The HTML report for `simulate`. Its rows are run results, not steps, and the
+ * trajectory that led there is detail behind the final-state checks (ADR D9).
  */
 
 import { SimulationConfig } from "../types/config.js";
@@ -54,11 +53,11 @@ function renderSummary(results: SimulationResults): string {
 
   return `
         <p class="text-sm text-slate-500 mb-4 font-medium">
-          Judged <strong class="font-semibold text-slate-700">${results.simulationCount} simulation${results.simulationCount !== 1 ? "s" : ""}</strong> across <strong class="font-semibold text-slate-700">${runs} run${runs !== 1 ? "s" : ""}</strong>.
+          Completed <strong class="font-semibold text-slate-700">${results.simulationCount} simulation${results.simulationCount !== 1 ? "s" : ""}</strong> across <strong class="font-semibold text-slate-700">${runs} run${runs !== 1 ? "s" : ""}</strong>.
         </p>
         <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div class="bg-slate-50 p-4 rounded-lg border border-slate-100 flex flex-col">
-                <span class="text-sm text-slate-500 font-medium">Verdicts</span>
+                <span class="text-sm text-slate-500 font-medium">Runs</span>
                 <span class="text-2xl font-bold text-slate-900">${total}</span>
             </div>
             <div class="bg-emerald-50 p-4 rounded-lg border border-emerald-100 flex flex-col">
@@ -70,7 +69,7 @@ function renderSummary(results: SimulationResults): string {
                 <span class="text-2xl font-bold text-rose-700">${results.failCount}</span>
             </div>
             <div class="bg-amber-50 p-4 rounded-lg border border-amber-100 flex flex-col">
-                <span class="text-sm text-amber-600 font-medium">No verdict</span>
+                <span class="text-sm text-amber-600 font-medium">Errors</span>
                 <span class="text-2xl font-bold text-amber-700">${results.errorCount}</span>
             </div>
             <div class="bg-blue-50 p-4 rounded-lg border border-blue-100 flex flex-col">
@@ -80,14 +79,14 @@ function renderSummary(results: SimulationResults): string {
         </div>`;
 }
 
-function renderConfiguration(config: SimulationConfig): string {
+function renderConfiguration(config: SimulationConfig, usesJudge: boolean): string {
   return `
 <ul class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 text-sm text-slate-600">
     <li class="flex flex-col"><strong class="text-slate-900 font-medium">URL</strong> <code class="mt-1 px-2 py-1 bg-slate-100 rounded text-xs text-slate-800 font-mono break-all">${escapeHtml(config.url)}</code></li>
     <li class="flex flex-col"><strong class="text-slate-900 font-medium">Simulations</strong> <code class="mt-1 px-2 py-1 bg-slate-100 rounded text-xs text-slate-800 font-mono break-all">${escapeHtml(config.simulationsFile)}</code></li>
     <li class="flex flex-col"><strong class="text-slate-900 font-medium">Agent under test</strong> <span class="mt-1 text-slate-800">${escapeHtml(config.model)}</span></li>
     <li class="flex flex-col"><strong class="text-slate-900 font-medium">Simulated user</strong> <span class="mt-1 text-slate-800">${escapeHtml(config.userModel || config.model)}</span></li>
-    <li class="flex flex-col"><strong class="text-slate-900 font-medium">Judge</strong> <span class="mt-1 text-slate-800">${escapeHtml(config.judgeModel || ANALYZER_MODEL_DEFAULT)}</span></li>
+    <li class="flex flex-col"><strong class="text-slate-900 font-medium">Judge</strong> <span class="mt-1 text-slate-800">${usesJudge ? escapeHtml(config.judgeModel || ANALYZER_MODEL_DEFAULT) : "Not used"}</span></li>
     <li class="flex flex-col"><strong class="text-slate-900 font-medium">Chrome channel</strong> <span class="mt-1 text-slate-800">${escapeHtml(config.chromeChannel || "chrome-canary")}</span></li>
 </ul>`;
 }
@@ -128,6 +127,82 @@ function renderSetupCalls(setupCalls?: ToolCallOutcome[]): string {
           )
           .join("")}
       </ul>
+    </div>`;
+}
+
+function assertionExpected(
+  assertion: NonNullable<SimulationResult["simulation"]["assertions"]>[number],
+): unknown {
+  if ("exists" in assertion.expect) return assertion.expect.exists;
+  if ("count" in assertion.expect) return assertion.expect.count;
+  if ("text" in assertion.expect) return assertion.expect.text;
+  return assertion.expect.attribute.value;
+}
+
+function assertionLabel(
+  assertion: NonNullable<SimulationResult["simulation"]["assertions"]>[number],
+): string {
+  if ("exists" in assertion.expect) return "Element exists";
+  if ("count" in assertion.expect) return "Element count";
+  if ("text" in assertion.expect) return "Text content";
+  return `Attribute ${assertion.expect.attribute.name}`;
+}
+
+function renderValue(value: unknown): string {
+  const serialized = JSON.stringify(value, null, 2) ?? String(value);
+  return escapeHtml(serialized);
+}
+
+function renderDomAssertions(result: SimulationResult): string {
+  const authored = result.simulation.assertions;
+  if (!authored?.length) return "";
+
+  const wasEvaluated = Boolean(result.assertionResults?.length);
+  return `
+    <div class="bg-white rounded-lg border border-slate-200 overflow-hidden">
+      <div class="p-3 bg-slate-50/60 border-b border-slate-200">
+        <h5 class="text-xs font-semibold text-slate-700 uppercase tracking-wider">Deterministic DOM assertions</h5>
+        ${
+          wasEvaluated
+            ? '<p class="text-xs text-slate-500 mt-1">Measured against the final page state after the conversation.</p>'
+            : '<p class="text-xs text-slate-500 mt-1">Not evaluated because the run ended before final-state checks.</p>'
+        }
+      </div>
+      <ol class="divide-y divide-slate-100">
+        ${authored
+          .map((assertion, index) => {
+            const observed = result.assertionResults?.[index];
+            const outcome = observed?.outcome;
+            const status = outcome ? outcome.toUpperCase() : "NOT EVALUATED";
+            const badge = outcome
+              ? OUTCOME_BADGES[outcome]
+              : "bg-slate-100 text-slate-700 border-slate-200";
+            return `
+          <li class="p-3 space-y-3">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="px-2 py-0.5 rounded text-[10px] font-semibold border ${badge}">${status}</span>
+              <code class="text-xs text-slate-800 font-mono break-all">${escapeHtml(assertion.selector)}</code>
+              <span class="text-xs text-slate-500">${escapeHtml(assertionLabel(assertion))}</span>
+            </div>
+            <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <dt class="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Expected</dt>
+                <dd><pre class="whitespace-pre-wrap break-words text-xs text-slate-700 font-mono m-0">${renderValue(observed?.expected ?? assertionExpected(assertion))}</pre></dd>
+              </div>
+              ${
+                observed
+                  ? `<div>
+                <dt class="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Actual</dt>
+                <dd><pre class="whitespace-pre-wrap break-words text-xs text-slate-700 font-mono m-0">${renderValue(observed.actual)}</pre></dd>
+              </div>`
+                  : ""
+              }
+            </dl>
+            ${observed?.error ? `<p class="text-xs text-amber-800">${escapeHtml(observed.error)}</p>` : ""}
+          </li>`;
+          })
+          .join("")}
+      </ol>
     </div>`;
 }
 
@@ -231,7 +306,7 @@ function renderRun(result: SimulationResult, totalRuns: number): string {
           ${
             result.error
               ? `<div class="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                   <h5 class="text-xs font-semibold text-amber-900 uppercase tracking-wider mb-1">Never reached a verdict</h5>
+                   <h5 class="text-xs font-semibold text-amber-900 uppercase tracking-wider mb-1">Run error</h5>
                    <pre class="whitespace-pre-wrap text-xs text-amber-900 font-mono m-0">${escapeHtml(result.error)}</pre>
                  </div>`
               : ""
@@ -246,6 +321,7 @@ function renderRun(result: SimulationResult, totalRuns: number): string {
                  </div>`
                 : ""
           }
+          ${renderDomAssertions(result)}
           ${renderSetupCalls(result.setupCalls)}
           <div class="bg-white rounded-lg border border-slate-200 p-3">
             <h5 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">The user's brief</h5>
@@ -336,6 +412,7 @@ export function renderSimulationReport(
   results: SimulationResults,
 ): string {
   const groups = groupBySimulation(results.results);
+  const usesJudge = results.results.some((result) => Boolean(result.simulation.successCriteria));
 
   // TODO(simulate): third copy of this document shell, after `renderReport`
   // and `renderWebmcpReport`. Collapse the three into one when the simulation
@@ -372,7 +449,7 @@ export function renderSimulationReport(
 
         <section class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
             <h2 class="text-xl font-semibold mb-4 text-slate-800">Configuration</h2>
-            ${renderConfiguration(config)}
+            ${renderConfiguration(config, usesJudge)}
         </section>
 
         <section class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
@@ -381,7 +458,7 @@ export function renderSimulationReport(
         </section>
 
         <section class="space-y-6">
-            <h2 class="text-xl font-semibold text-slate-800 pb-2 border-b border-slate-200">Verdicts</h2>
+            <h2 class="text-xl font-semibold text-slate-800 pb-2 border-b border-slate-200">Results</h2>
             ${groups.map((group, index) => renderSimulationCard(group, index + 1, groups.length)).join("")}
         </section>
     </div>

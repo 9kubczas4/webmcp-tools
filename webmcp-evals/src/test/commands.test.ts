@@ -228,6 +228,66 @@ describe("generateSimulationSummaryTable", () => {
     assert.match(runRows[0][4], /setup call 1 \(addToCart\) failed/);
   });
 
+  it("summarizes the first failed DOM assertion without requiring the HTML report", () => {
+    const assertion = {
+      type: "dom" as const,
+      selector: "[data-testid='cart-item']",
+      expect: { count: 1 },
+    };
+    const runRows = rowsOf({
+      results: [
+        simulationResult({
+          outcome: "fail",
+          verdict: undefined,
+          assertionResults: [
+            {
+              assertion,
+              outcome: "fail",
+              expected: 1,
+              actual: 2,
+            },
+          ],
+        }),
+      ],
+      simulationCount: 1,
+      passCount: 0,
+      failCount: 1,
+      errorCount: 0,
+    }).filter((row) => row.length > 1);
+
+    assert.match(runRows[0][4], /DOM \[data-testid='cart-item'\] count: expected 1, got 2/);
+  });
+
+  it("states how many deterministic checks passed when no judge was used", () => {
+    const runRows = rowsOf({
+      results: [
+        simulationResult({
+          verdict: undefined,
+          assertionResults: [
+            {
+              assertion: { type: "dom", selector: "#status", expect: { exists: true } },
+              outcome: "pass",
+              expected: true,
+              actual: true,
+            },
+            {
+              assertion: { type: "dom", selector: ".item", expect: { count: 1 } },
+              outcome: "pass",
+              expected: 1,
+              actual: 1,
+            },
+          ],
+        }),
+      ],
+      simulationCount: 1,
+      passCount: 1,
+      failCount: 0,
+      errorCount: 0,
+    }).filter((row) => row.length > 1);
+
+    assert.strictEqual(runRows[0][4], "2 DOM assertions passed");
+  });
+
   it("truncates reasoning to its first line", () => {
     const runRows = rowsOf({
       results: [

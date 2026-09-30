@@ -92,6 +92,104 @@ describe("renderSimulationReport", () => {
     assert.match(body, /removeFromCart -&gt; \{&quot;cart&quot;/);
   });
 
+  it("shows deterministic DOM evidence with explicit status, expected, and actual values", () => {
+    const html = renderSimulationReport(
+      config,
+      resultsOf([
+        result({
+          simulation: {
+            name: "Checks the final cart",
+            userScenario: "Remove the cap.",
+            maxTurns: 1,
+            assertions: [
+              {
+                type: "dom",
+                selector: "[data-testid='<cart>']",
+                expect: { count: 1 },
+              },
+            ],
+          },
+          outcome: "fail",
+          verdict: undefined,
+          assertionResults: [
+            {
+              assertion: {
+                type: "dom",
+                selector: "[data-testid='<cart>']",
+                expect: { count: 1 },
+              },
+              outcome: "fail",
+              expected: { $gte: 1 },
+              actual: "</pre><script>alert(1)</script>",
+            },
+          ],
+        }),
+      ]),
+    );
+
+    assert.match(html, /Deterministic DOM assertions/);
+    assert.match(html, />FAIL</);
+    assert.match(html, /\[data-testid=&#039;&lt;cart&gt;&#039;\]/);
+    assert.match(html, /Expected/);
+    assert.match(html, /&quot;\$gte&quot;: 1/);
+    assert.match(html, /Actual/);
+    assert.match(html, /&lt;\/pre&gt;&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+    assert.ok(!html.includes("<script>alert(1)</script>"));
+  });
+
+  it("marks authored assertions as not evaluated when a run stops early", () => {
+    const html = renderSimulationReport(
+      config,
+      resultsOf([
+        result({
+          simulation: {
+            name: "Checks the final cart",
+            userScenario: "Remove the cap.",
+            maxTurns: 1,
+            assertions: [{ type: "dom", selector: "[data-testid='cart']", expect: { count: 1 } }],
+          },
+          outcome: "error",
+          verdict: undefined,
+          assertionResults: undefined,
+          error: "setup failed",
+        }),
+      ]),
+    );
+
+    assert.match(html, /Not evaluated because the run ended before final-state checks/);
+    assert.match(html, /\[data-testid=&#039;cart&#039;\]/);
+  });
+
+  it("does not claim that a judge model was used for assertion-only simulations", () => {
+    const html = renderSimulationReport(
+      config,
+      resultsOf([
+        result({
+          simulation: {
+            name: "Checks the final cart",
+            userScenario: "Remove the cap.",
+            maxTurns: 1,
+            assertions: [{ type: "dom", selector: "#cart", expect: { exists: true } }],
+          },
+          verdict: undefined,
+          assertionResults: [
+            {
+              assertion: { type: "dom", selector: "#cart", expect: { exists: true } },
+              outcome: "pass",
+              expected: true,
+              actual: true,
+            },
+          ],
+        }),
+      ]),
+    );
+
+    const configuration = html.split("Configuration")[1].split("Summary")[0];
+    assert.match(configuration, /Judge/);
+    assert.match(configuration, /Not used/);
+    assert.ok(!configuration.includes("judge-model"));
+  });
+
   it("labels setup as world state and keeps it out of the agent's tool calls", () => {
     const html = renderSimulationReport(
       config,
@@ -164,7 +262,7 @@ describe("renderSimulationReport", () => {
       ]),
     );
 
-    assert.match(html, /Never reached a verdict/);
+    assert.match(html, /Run error/);
     assert.match(html, /out of stock/);
     // The criteria still show, so a reader can see what was being asked.
     assert.match(html, /The cap is gone and the jacket remains\./);
