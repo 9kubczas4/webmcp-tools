@@ -309,7 +309,7 @@ describe("executeSimulations", () => {
     assert.strictEqual(results.results[0].conversation?.turns.length, 1);
   });
 
-  it("does not send assertion-only simulations to the LLM judge before DOM checks exist", async () => {
+  it("passes an assertion-only simulation without calling the LLM judge", async () => {
     let judgeCalls = 0;
 
     const results = await executeSimulations(
@@ -329,6 +329,14 @@ describe("executeSimulations", () => {
       undefined,
       deps({
         launchBrowser: async () => new FakeBrowser() as unknown as Browser,
+        evaluateDomAssertions: async (_page, assertions) => [
+          {
+            assertion: assertions[0],
+            outcome: "pass",
+            expected: 1,
+            actual: 1,
+          },
+        ],
         judgeSimulation: async () => {
           judgeCalls++;
           return verdict();
@@ -336,10 +344,75 @@ describe("executeSimulations", () => {
       }),
     );
 
-    assert.strictEqual(results.errorCount, 1);
+    assert.strictEqual(results.passCount, 1);
     assert.strictEqual(judgeCalls, 0);
-    assert.match(results.results[0].error || "", /DOM assertions.*not executable yet/);
+    assert.strictEqual(results.results[0].assertionResults?.[0].outcome, "pass");
     assert.strictEqual(results.results[0].conversation?.turns.length, 1);
+  });
+
+  it("fails deterministically and skips the judge when a DOM assertion does not match", async () => {
+    let judgeCalls = 0;
+
+    const results = await executeSimulations(
+      [
+        simulation({
+          assertions: [
+            {
+              type: "dom",
+              selector: "[data-testid='cart']",
+              expect: { count: 1 },
+            },
+          ],
+        }),
+      ],
+      config(),
+      undefined,
+      deps({
+        launchBrowser: async () => new FakeBrowser() as unknown as Browser,
+        evaluateDomAssertions: async (_page, assertions) => [
+          {
+            assertion: assertions[0],
+            outcome: "fail",
+            expected: 1,
+            actual: 2,
+          },
+        ],
+        judgeSimulation: async () => {
+          judgeCalls++;
+          return verdict();
+        },
+      }),
+    );
+
+    assert.strictEqual(results.failCount, 1);
+    assert.strictEqual(judgeCalls, 0);
+    assert.strictEqual(results.results[0].assertionResults?.[0].actual, 2);
+  });
+
+  it("reports a DOM evaluation error as an error rather than an agent failure", async () => {
+    const results = await executeSimulations(
+      [
+        simulation({
+          assertions: [{ type: "dom", selector: "[", expect: { exists: true } }],
+        }),
+      ],
+      config(),
+      undefined,
+      deps({
+        launchBrowser: async () => new FakeBrowser() as unknown as Browser,
+        evaluateDomAssertions: async (_page, assertions) => [
+          {
+            assertion: assertions[0],
+            outcome: "error",
+            expected: true,
+            error: "Invalid selector",
+          },
+        ],
+      }),
+    );
+
+    assert.strictEqual(results.errorCount, 1);
+    assert.match(results.results[0].error || "", /Invalid selector/);
   });
 
   it("judges a conversation that ran out of turns, which is not itself a failure", async () => {

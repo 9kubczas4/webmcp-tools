@@ -20,7 +20,7 @@ import chalk from "chalk";
 import { LanguageModel } from "ai";
 import { SimulationConfig } from "../types/config.js";
 import { BrowserConsoleError } from "../types/evals.js";
-import { LoadedSimulation, SimulationVerdict } from "../types/simulations.js";
+import { DomAssertion, LoadedSimulation, SimulationVerdict } from "../types/simulations.js";
 import { ANALYZER_MODEL_DEFAULT } from "../analyzer/index.js";
 import {
   ConversationRequest,
@@ -29,6 +29,7 @@ import {
 } from "../simulate/conversation.js";
 import { judgeSimulation, JudgeRequest } from "../simulate/judge.js";
 import { ToolCallOutcome, runToolCallSequence } from "../simulate/toolSequence.js";
+import { DomAssertionResult, evaluateDomAssertions } from "../simulate/domAssertions.js";
 import {
   Browser,
   BrowserPage,
@@ -68,6 +69,8 @@ export type SimulationResult = {
   setupCalls?: ToolCallOutcome[];
   /** The trajectory the report expands into. Absent only if nothing was said. */
   conversation?: ConversationResult;
+  /** Deterministic observations taken from the final page state. */
+  assertionResults?: DomAssertionResult[];
   browserConsoleErrors?: BrowserConsoleError[];
 };
 
@@ -116,6 +119,10 @@ export type SimulationDependencies = {
   createRegistry?: (page: BrowserPage) => SimulationRegistry;
   runConversation?: (request: ConversationRequest) => Promise<ConversationResult>;
   judgeSimulation?: (request: JudgeRequest, model: LanguageModel) => Promise<SimulationVerdict>;
+  evaluateDomAssertions?: (
+    page: BrowserPage,
+    assertions: DomAssertion[],
+  ) => Promise<DomAssertionResult[]>;
   models?: SimulationModels;
 };
 
@@ -154,6 +161,7 @@ async function runOneSimulation(
 ): Promise<SimulationResult> {
   const conversationOf = dependencies.runConversation || runConversation;
   const judgeOf = dependencies.judgeSimulation || judgeSimulation;
+  const evaluateAssertions = dependencies.evaluateDomAssertions || evaluateDomAssertions;
   const timeoutMs = config.timeoutMs || DEFAULT_TIMEOUT_MS;
 
   const page = await browser.newPage();
@@ -231,6 +239,50 @@ async function runOneSimulation(
       };
     }
 
+    let assertionResults: DomAssertionResult[] | undefined;
+    if (simulation.assertions?.length) {
+      assertionResults = await evaluateAssertions(page, simulation.assertions);
+      const brokenAssertion = assertionResults.find((result) => result.outcome === "error");
+      if (brokenAssertion) {
+        return {
+          simulation,
+          runIndex,
+          outcome: "error",
+          ...(setupCalls ? { setupCalls } : {}),
+          conversation,
+          assertionResults,
+          error: `DOM assertion for selector ${JSON.stringify(brokenAssertion.assertion.selector)} could not be evaluated: ${brokenAssertion.error}`,
+          ...consoleErrors(),
+        };
+      }
+
+      // Deterministic checks are a hard gate: an LLM judge may add a further
+      // requirement, but it must never override a measured DOM mismatch.
+      if (assertionResults.some((result) => result.outcome === "fail")) {
+        return {
+          simulation,
+          runIndex,
+          outcome: "fail",
+          ...(setupCalls ? { setupCalls } : {}),
+          conversation,
+          assertionResults,
+          ...consoleErrors(),
+        };
+      }
+
+      if (!simulation.successCriteria) {
+        return {
+          simulation,
+          runIndex,
+          outcome: "pass",
+          ...(setupCalls ? { setupCalls } : {}),
+          conversation,
+          assertionResults,
+          ...consoleErrors(),
+        };
+      }
+    }
+
     if (!simulation.successCriteria) {
       return {
         simulation,
@@ -238,7 +290,7 @@ async function runOneSimulation(
         outcome: "error",
         ...(setupCalls ? { setupCalls } : {}),
         conversation,
-        error: "deterministic DOM assertions are configured but are not executable yet",
+        error: "the simulation has neither DOM assertions nor LLM success criteria",
         ...consoleErrors(),
       };
     }
@@ -257,6 +309,7 @@ async function runOneSimulation(
       runIndex,
       outcome: verdict.passed ? "pass" : "fail",
       verdict,
+      ...(assertionResults ? { assertionResults } : {}),
       ...(setupCalls ? { setupCalls } : {}),
       conversation,
       ...consoleErrors(),

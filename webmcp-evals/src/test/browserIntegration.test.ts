@@ -7,9 +7,10 @@ import * as assert from "node:assert";
 import http from "node:http";
 import { describe, it } from "node:test";
 import { BrowserToolRegistry, launchBrowser } from "../evaluator/browser.js";
+import { evaluateDomAssertions } from "../simulate/domAssertions.js";
 
 describe("Browser Integration", () => {
-  it("should discover and execute tools on SPA hash routes", async (t) => {
+  it("should discover tools and inspect final DOM state on SPA hash routes", async (t) => {
     const server = http.createServer((_req, res) => {
       res.writeHead(200, { "Content-Type": "text/html" });
       res.end(`
@@ -30,7 +31,10 @@ describe("Browser Integration", () => {
               }, 50);
             </script>
           </head>
-          <body>SPA Test Page</body>
+          <body>
+            <div class="cart-item">Jacket</div>
+            <p id="status" data-state="completed">Checkout Completed</p>
+          </body>
         </html>
       `);
     });
@@ -59,6 +63,20 @@ describe("Browser Integration", () => {
 
       const result = await registry.executeTool("test_spa_tool", {});
       assert.deepStrictEqual(result, { success: true, msg: "hello" });
+
+      const assertionResults = await evaluateDomAssertions(page, [
+        { type: "dom", selector: ".cart-item", expect: { count: 1 } },
+        { type: "dom", selector: "#status", expect: { text: { $contains: "Completed" } } },
+        {
+          type: "dom",
+          selector: "#status",
+          expect: { attribute: { name: "data-state", value: "completed" } },
+        },
+      ]);
+      assert.deepStrictEqual(
+        assertionResults.map((assertionResult) => assertionResult.outcome),
+        ["pass", "pass", "pass"],
+      );
 
       await page.close();
     } finally {
