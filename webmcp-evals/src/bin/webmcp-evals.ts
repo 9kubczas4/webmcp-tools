@@ -38,7 +38,6 @@ program
 
 // Global options shared across commands
 program
-  .option("-b, --backend <backend>", "Model backend (vercel, gemini, ollama)", "vercel")
   .option("-m, --model <model>", "Model identifier", "gemini-3.5-flash")
   .option("-r, --runs <number>", "Number of runs per test case", (v) => parseInt(v, 10), 1)
   .option("--max-steps <number>", "Maximum agent step count", (v) => parseInt(v, 10))
@@ -63,6 +62,7 @@ program
 program
   .command("local")
   .description("Run evals against a static JSON tool schema definition file")
+  .option("-b, --backend <backend>", "Model backend (vercel, gemini, ollama)", "vercel")
   .requiredOption("-t, --tools <path>", "Path to tool schema JSON file")
   .requiredOption("-e, --evals <path>", "Path to evals test suite JSON file")
   .option("--analyze", "Automatically run LLM report analysis upon completion", false)
@@ -72,6 +72,7 @@ program
 program
   .command("browser")
   .description("Run evals live against WebMCP tools exposed on a web page via Puppeteer")
+  .option("-b, --backend <backend>", "Model backend (vercel, gemini, ollama)", "vercel")
   .requiredOption("-u, --url <url>", "Target web page URL")
   .requiredOption("-e, --evals <path>", "Path to evals test suite JSON file")
   .option("--open", "Automatically open the HTML report in browser upon completion", false)
@@ -92,7 +93,7 @@ program
 program
   .command("simulate")
   .description(
-    "Run goal-oriented simulations: a simulated user talks to the agent and a judge grades the outcome",
+    "Run goal-oriented simulations and check the final state with DOM assertions, an LLM judge, or both",
   )
   .requiredOption("-u, --url <url>", "Target web page URL")
   .requiredOption("-s, --simulations <path>", "Path to simulations JSON file")
