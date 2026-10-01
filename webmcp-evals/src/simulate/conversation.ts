@@ -27,16 +27,28 @@ export type ConversationTurn = {
   toolCalls: ToolCall[];
 };
 
-export type ConversationRequest = {
-  userScenario: string;
+type ConversationRequestBase = {
   maxTurns: number;
   maxDurationMs: number;
   /** Cap on the agent's tool-calling steps within a single turn. */
   maxSteps: number;
   registry: ToolRegistry;
   agentModel: LanguageModel;
-  userModel: LanguageModel;
 };
+
+export type ConversationRequest = ConversationRequestBase &
+  (
+    | {
+        userScenario: string;
+        userModel: LanguageModel;
+        userMessage?: never;
+      }
+    | {
+        userMessage: string;
+        userScenario?: never;
+        userModel?: never;
+      }
+  );
 
 export type ConversationResult = {
   turns: ConversationTurn[];
@@ -75,8 +87,9 @@ function userVisibleTranscript(turns: ConversationTurn[]): UserVisibleMessage[] 
 }
 
 /**
- * Runs a simulated user and the agent against each other until the user is
- * satisfied, the turns run out, the clock runs out, or something breaks.
+ * Runs either one direct user message or a simulated user and agent against
+ * each other until the user is satisfied, a budget runs out, or something
+ * breaks.
  *
  * The verdict is not decided here. Which of those endings occurred is recorded
  * in `endedBy` and handed to the judge as context: a conversation that ran out
@@ -109,23 +122,27 @@ export async function runConversation(
         break;
       }
 
-      const userController = new AbortController();
       let userReply: UserTurnResult;
-      try {
-        userReply = await withTimeout(
-          userTurn(
-            { userScenario: request.userScenario, transcript: userVisibleTranscript(turns) },
-            request.userModel,
-            userController.signal,
-          ),
-          remainingMs(),
-          "the simulated user",
-        );
-      } catch (thrown) {
-        // A timed-out model call may still be running after Promise.race has
-        // settled. Cancel it before the conversation moves on or returns.
-        userController.abort();
-        throw thrown;
+      if (request.userMessage !== undefined) {
+        userReply = { message: request.userMessage, done: false };
+      } else {
+        const userController = new AbortController();
+        try {
+          userReply = await withTimeout(
+            userTurn(
+              { userScenario: request.userScenario, transcript: userVisibleTranscript(turns) },
+              request.userModel,
+              userController.signal,
+            ),
+            remainingMs(),
+            "the simulated user",
+          );
+        } catch (thrown) {
+          // A timed-out model call may still be running after Promise.race has
+          // settled. Cancel it before the conversation moves on or returns.
+          userController.abort();
+          throw thrown;
+        }
       }
 
       if (userReply.done) {
@@ -195,6 +212,11 @@ export async function runConversation(
           endedBy = "error";
           error = agentResult.error;
         }
+        break;
+      }
+
+      if (request.userMessage !== undefined) {
+        endedBy = "singleTurn";
         break;
       }
 

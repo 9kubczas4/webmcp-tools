@@ -93,7 +93,7 @@ function simulation(overrides: Partial<LoadedSimulation> = {}): LoadedSimulation
     maxTurns: 4,
     successCriteria: "The cap is out of the cart and the jacket is still in it.",
     ...overrides,
-  };
+  } as LoadedSimulation;
 }
 
 function config(overrides: Partial<SimulationConfig> = {}): SimulationConfig {
@@ -615,6 +615,37 @@ describe("executeSimulations", () => {
     assert.ok(requests.every((request) => request.maxSteps === 11));
   });
 
+  it("passes a direct message to the conversation without a user model", async () => {
+    let captured: ConversationRequest | undefined;
+    const direct: LoadedSimulation = {
+      name: "Add one jacket",
+      userMessage: "Add the black jacket to my cart.",
+      maxTurns: 1,
+      assertions: [{ type: "dom", selector: "#cart", expect: { exists: true } }],
+    };
+
+    await executeSimulations([direct], config(), undefined, {
+      models: { agent: "test-agent" as any },
+      launchBrowser: async () => new FakeBrowser() as unknown as Browser,
+      createRegistry: () => new FakeRegistry(),
+      runConversation: async (request) => {
+        captured = request;
+        return conversationResult({ endedBy: "singleTurn" });
+      },
+      evaluateDomAssertions: async () => [
+        {
+          assertion: direct.assertions![0],
+          outcome: "pass",
+          expected: true,
+          actual: true,
+        },
+      ],
+    });
+
+    assert.strictEqual(captured?.userMessage, "Add the black jacket to my cart.");
+    assert.ok(captured && !("userModel" in captured));
+  });
+
   it("attaches browser console errors to the result", async () => {
     const consoleError: BrowserConsoleError = {
       kind: "console",
@@ -677,6 +708,17 @@ describe("executeSimulations", () => {
 });
 
 describe("resolveSimulationModels", () => {
+  it("omits the user model when every case supplies a direct message", () => {
+    const models = resolveSimulationModels(config({ model: "gemini-3-flash-preview" }), {
+      includeJudge: false,
+      includeUser: false,
+    });
+
+    assert.ok(models.agent);
+    assert.ok(!("user" in models));
+    assert.ok(!("judge" in models));
+  });
+
   it("omits the judge model when no simulation asks for an LLM verdict", () => {
     const models = resolveSimulationModels(config({ model: "gemini-3-flash-preview" }), {
       includeJudge: false,

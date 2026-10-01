@@ -4,21 +4,15 @@
  */
 
 /**
- * A simulation case: a brief for a simulated user, a budget for the
- * conversation, and the outcome a judge weighs the resulting transcript
- * against. Distinct from `Eval`, which asserts on a trajectory of tool calls.
+ * A simulation case: either a brief for a simulated user or one direct user
+ * message, plus the outcome checked against the resulting application state.
+ * Distinct from `Eval`, which asserts on a trajectory of tool calls.
  */
-export type Simulation = {
+type SimulationBase = {
   name?: string;
   // Tool calls the harness executes before the agent joins the conversation,
   // so a case can start from a world that is already in some state.
   setup?: SimulationSetupCall[];
-  // The brief for the simulated user. Never sees `successCriteria`: a user
-  // that knows the answer hands it to the agent and the case passes for the
-  // wrong reason.
-  userScenario: string;
-  // Defaults to one. Values above one matter when a simulated user is enabled.
-  maxTurns?: number;
   // Wall-clock budget for the whole conversation. Falls back to the CLI
   // default when omitted. `maxTurns` cannot bound a turn that stalls inside a
   // tool call; this can.
@@ -29,6 +23,25 @@ export type Simulation = {
   // define assertions, successCriteria, or both.
   successCriteria?: string;
 };
+
+type SimulatedUserSimulation = SimulationBase & {
+  // The brief for the simulated user. Never sees `successCriteria`: a user
+  // that knows the answer hands it to the agent and the case passes for the
+  // wrong reason.
+  userScenario: string;
+  userMessage?: never;
+  // Defaults to one. Values above one matter when a simulated user is enabled.
+  maxTurns?: number;
+};
+
+type DirectUserSimulation = SimulationBase & {
+  // Exact message sent to the agent. No user model is invoked in this mode.
+  userMessage: string;
+  userScenario?: never;
+  maxTurns?: never;
+};
+
+export type Simulation = SimulatedUserSimulation | DirectUserSimulation;
 
 type AtLeastOne<T> = {
   [Key in keyof T]-?: Required<Pick<T, Key>> & Partial<Omit<T, Key>>;
@@ -74,16 +87,15 @@ export type SimulationSetupCall = {
 };
 
 /** A simulation with loader defaults and its reporting name resolved. */
-export type LoadedSimulation = Omit<Simulation, "name" | "maxTurns"> & {
-  name: string;
-  maxTurns: number;
-};
+export type LoadedSimulation =
+  | (Omit<SimulatedUserSimulation, "name" | "maxTurns"> & { name: string; maxTurns: number })
+  | (Omit<DirectUserSimulation, "name" | "maxTurns"> & { name: string; maxTurns: 1 });
 
 /**
  * Why a conversation stopped. Reported beside the verdict, never in place of
  * one — exhausting a budget is not itself a failure.
  */
-export type SimulationEndReason = "user" | "maxTurns" | "timeout" | "error";
+export type SimulationEndReason = "user" | "singleTurn" | "maxTurns" | "timeout" | "error";
 
 export type SimulationVerdict = {
   passed: boolean;

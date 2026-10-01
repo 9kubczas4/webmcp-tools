@@ -135,6 +135,16 @@ describe("serializeTranscript", () => {
     assert.match(transcript, /did not reach a natural close/i);
   });
 
+  it("describes a configured single turn as complete rather than truncated", () => {
+    const transcript = serializeTranscript({
+      successCriteria: CRITERIA,
+      conversation: conversation({ endedBy: "singleTurn", turnsUsed: 1 }),
+    });
+
+    assert.match(transcript, /configured single-turn interaction completed/i);
+    assert.ok(!/cut off|ran out/i.test(transcript));
+  });
+
   it("keeps the user's parting words, which are a claim like any other", () => {
     const transcript = serializeTranscript({
       successCriteria: CRITERIA,

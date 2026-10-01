@@ -224,6 +224,7 @@ export function parseSimulations(raw: unknown, fileLabel: string): LoadedSimulat
     const {
       name: rawName,
       userScenario,
+      userMessage,
       successCriteria,
       assertions,
       maxTurns,
@@ -240,8 +241,14 @@ export function parseSimulations(raw: unknown, fileLabel: string): LoadedSimulat
     const name = isNonEmptyString(rawName) ? rawName.trim() : `Simulation ${index + 1}`;
     const label = `${position} ("${name}")`;
 
-    if (!isNonEmptyString(userScenario)) {
-      throw new Error(`${label}: "userScenario" must be a non-empty string.`);
+    if (userScenario !== undefined && !isNonEmptyString(userScenario)) {
+      throw new Error(`${label}: "userScenario" must be a non-empty string when present.`);
+    }
+    if (userMessage !== undefined && !isNonEmptyString(userMessage)) {
+      throw new Error(`${label}: "userMessage" must be a non-empty string when present.`);
+    }
+    if ((userScenario === undefined) === (userMessage === undefined)) {
+      throw new Error(`${label}: define exactly one of "userScenario" or "userMessage".`);
     }
     if (Array.isArray(successCriteria)) {
       throw new Error(
@@ -255,7 +262,10 @@ export function parseSimulations(raw: unknown, fileLabel: string): LoadedSimulat
     if (maxTurns !== undefined && !isPositiveInteger(maxTurns)) {
       throw new Error(`${label}: "maxTurns" must be a positive integer when present.`);
     }
-    const turnBudget = maxTurns === undefined ? 1 : maxTurns;
+    if (userMessage !== undefined && maxTurns !== undefined) {
+      throw new Error(`${label}: "maxTurns" cannot be used with "userMessage".`);
+    }
+    const turnBudget = userMessage !== undefined ? 1 : maxTurns === undefined ? 1 : maxTurns;
     let durationBudget: number | undefined;
     if (maxDurationMs !== undefined) {
       if (!isPositiveInteger(maxDurationMs)) {
@@ -270,6 +280,7 @@ export function parseSimulations(raw: unknown, fileLabel: string): LoadedSimulat
         "name",
         "setup",
         "userScenario",
+        "userMessage",
         "assertions",
         "maxTurns",
         "maxDurationMs",
@@ -277,7 +288,7 @@ export function parseSimulations(raw: unknown, fileLabel: string): LoadedSimulat
       ],
       label,
       {
-        messages: "a simulation generates its own user; it has no authored conversation",
+        messages: "use one userScenario or userMessage instead of an authored conversation",
         expectedCall: "a simulation is judged on its outcome, not on a trajectory",
       },
     );
@@ -288,15 +299,18 @@ export function parseSimulations(raw: unknown, fileLabel: string): LoadedSimulat
       throw new Error(`${label} must define at least one of "assertions" or "successCriteria".`);
     }
 
-    return {
+    const common = {
       name,
-      userScenario: userScenario.trim(),
       ...(isNonEmptyString(successCriteria) ? { successCriteria: successCriteria.trim() } : {}),
       ...(parsedAssertions ? { assertions: parsedAssertions } : {}),
-      maxTurns: turnBudget,
       ...(durationBudget !== undefined ? { maxDurationMs: durationBudget } : {}),
       ...(setupCalls ? { setup: setupCalls } : {}),
     };
+
+    if (isNonEmptyString(userScenario)) {
+      return { ...common, userScenario: userScenario.trim(), maxTurns: turnBudget };
+    }
+    return { ...common, userMessage: (userMessage as string).trim(), maxTurns: 1 as const };
   });
 
   const firstPositionByName = new Map<string, number>();

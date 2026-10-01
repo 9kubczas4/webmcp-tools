@@ -54,6 +54,18 @@ describe("parseSimulations", () => {
     ]);
   });
 
+  it("parses a direct user message without a simulated-user turn budget", () => {
+    const direct = validCase({ userMessage: "  Add the black jacket to my cart.  " });
+    delete direct.userScenario;
+    delete direct.maxTurns;
+
+    const [parsed] = parseSimulations([direct], FILE);
+
+    assert.strictEqual(parsed.userMessage, "Add the black jacket to my cart.");
+    assert.strictEqual(parsed.maxTurns, 1);
+    assert.ok(!("userScenario" in parsed));
+  });
+
   it("parses supported DOM assertions", () => {
     const parsed = parseSimulations(
       [
@@ -288,18 +300,40 @@ describe("parseSimulations", () => {
           [validCase(), validCase({ name: "Remove one item", userScenario: "   " })],
           FILE,
         ),
-      /simulations\.json: simulation #2 \("Remove one item"\): "userScenario" must be a non-empty string\./,
+      /simulations\.json: simulation #2 \("Remove one item"\): "userScenario" must be a non-empty string when present\./,
     );
   });
 
-  it("rejects a missing or blank userScenario", () => {
+  it("requires exactly one non-empty userScenario or userMessage", () => {
     const missing = validCase();
     delete missing.userScenario;
 
-    assert.throws(() => parseSimulations([missing], FILE), /"userScenario"/);
+    assert.throws(
+      () => parseSimulations([missing], FILE),
+      /exactly one of "userScenario" or "userMessage"/,
+    );
     assert.throws(
       () => parseSimulations([validCase({ userScenario: "" })], FILE),
-      /"userScenario"/,
+      /"userScenario" must be a non-empty string when present/,
+    );
+    assert.throws(
+      () => parseSimulations([validCase({ userScenario: undefined, userMessage: "  " })], FILE),
+      /"userMessage" must be a non-empty string when present/,
+    );
+    assert.throws(
+      () => parseSimulations([validCase({ userMessage: "Add the jacket." })], FILE),
+      /exactly one of "userScenario" or "userMessage"/,
+    );
+  });
+
+  it("rejects maxTurns for a direct user message", () => {
+    assert.throws(
+      () =>
+        parseSimulations(
+          [validCase({ userScenario: undefined, userMessage: "Add the jacket.", maxTurns: 2 })],
+          FILE,
+        ),
+      /"maxTurns" cannot be used with "userMessage"/,
     );
   });
 

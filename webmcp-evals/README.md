@@ -154,11 +154,11 @@ resolved to concrete sample arguments so standard evaluation suites can be reuse
 
 ### Command: `simulate`
 
-Runs goal-oriented evaluations against a live WebMCP page. For every case, a simulated user
-converses with the agent under test until the user finishes or a turn/time budget is exhausted.
-The harness then evaluates deterministic DOM assertions against the final page state. If the case
-also defines prose success criteria, a judge model evaluates the complete transcript after every
-DOM assertion passes. Assertion-only cases do not call a judge model.
+Runs goal-oriented evaluations against a live WebMCP page. A case either sends one exact user
+message or lets a simulated user converse with the agent under test until the user finishes or a
+budget is exhausted. The harness then evaluates deterministic DOM assertions against the final
+page state. If the case also defines prose success criteria, a judge model evaluates the complete
+transcript after every DOM assertion passes. Assertion-only cases do not call a judge model.
 
 ```bash
 npx webmcp-evals simulate \
@@ -188,20 +188,22 @@ npx webmcp-evals simulate \
 | ------------------------------- | -------- | -------------- | ------------------------------------------------------------ |
 | `-u, --url <url>`               | Yes      | —              | Target WebMCP page URL                                       |
 | `-s, --simulations <path>`      | Yes      | —              | Path to a `simulations.json` file                            |
-| `--user-model <model>`          | No       | Agent model    | Model that plays the simulated user                          |
+| `--user-model <model>`          | No       | Agent model    | Model used by cases that define `userScenario`               |
 | `--judge-model <model>`         | No       | Analyzer model | Model used for cases that define prose success criteria      |
 | `--max-duration <milliseconds>` | No       | `300000`       | Fallback wall-clock budget when a case omits `maxDurationMs` |
 | `--timeout <milliseconds>`      | No       | `30000`        | Timeout per navigation, setup tool call, or judge request    |
 | `-v, --verbose`                 | No       | `false`        | Print live page and conversation logs                        |
 
 The global `--runs`, `--max-steps`, `--reporter`, `--output-dir`, and `--chrome-channel`
-options also apply. There is no `--max-turns` option: `maxTurns` belongs to each case because it
-changes what that case measures.
+options also apply. There is no `--max-turns` option: `maxTurns` belongs to each `userScenario` case
+because it changes what that case measures.
 
-A simulation always uses the agent under test and a simulated user. A third model is used only for
-cases with `successCriteria`; assertion-only cases stop after deterministic final-DOM checks. The
-conversation itself remains model-driven and non-deterministic, so keep `smoke` as the fully
-deterministic, API-key-free CI signal. `simulate` complements it rather than replacing it.
+A simulation always uses the agent under test. Cases with `userScenario` also use a simulated user;
+cases with `userMessage` send that exact message directly to the agent and use no user model. A
+third model is used only for cases with `successCriteria`; assertion-only cases stop after
+deterministic final-DOM checks. Conversations driven by `userScenario` remain non-deterministic, so
+keep `smoke` as the fully deterministic, API-key-free CI signal. `simulate` complements it rather
+than replacing it.
 
 ---
 
@@ -249,8 +251,12 @@ npx webmcp-evals analyze .evals/report-1784621327799.json --open
 
 ## Simulation Suite Schema (`simulations.json`)
 
-Each simulation describes the user rather than pre-authoring their messages. A case must define
-`assertions`, `successCriteria`, or both:
+Each simulation supplies exactly one kind of user input:
+
+- `userScenario` describes a user for a model-driven, potentially multi-turn conversation.
+- `userMessage` is one exact message sent directly to the agent without invoking a user model.
+
+A case must also define `assertions`, `successCriteria`, or both:
 
 - `assertions` check the final live DOM deterministically.
 - `successCriteria` is one prose statement judged as a whole by an LLM.
@@ -262,6 +268,23 @@ separately in reports so they are never credited to the agent.
 Keep `userScenario` focused on the person's situation, preferences, and desired outcome. The
 simulated-user prompt already controls how the person speaks and prevents references to tools,
 internal IDs, and implementation steps, so scenarios should not repeat those instructions.
+
+For a simple one-turn goal, use `userMessage` instead. It cannot be combined with `userScenario` or
+`maxTurns`:
+
+```json
+{
+  "name": "Add one jacket",
+  "userMessage": "Add the black jacket to my cart.",
+  "assertions": [
+    {
+      "type": "dom",
+      "selector": "[data-testid='cart-item']",
+      "expect": { "count": 1 }
+    }
+  ]
+}
+```
 
 ```json
 [
@@ -302,13 +325,15 @@ Field reference:
 | ----------------- | -------- | --------------------------------------------------------------- |
 | `name`            | No       | Report label; defaults to `Simulation N`                        |
 | `setup`           | No       | Ordered concrete tool calls run before the conversation         |
-| `userScenario`    | Yes      | User context, preferences, and desired outcome                   |
-| `maxTurns`        | No       | Positive exchange limit; defaults to `1`                        |
+| `userScenario`    | No\*     | Brief for a model-driven simulated user                         |
+| `userMessage`     | No\*     | Exact message for a single turn with no simulated-user model    |
+| `maxTurns`        | No       | Exchange limit for `userScenario`; invalid with `userMessage`   |
 | `maxDurationMs`   | No       | Positive wall-clock budget; falls back to the CLI value         |
 | `assertions`      | No\*     | Non-empty list of deterministic checks against the final DOM    |
 | `successCriteria` | No\*     | Non-empty prose outcome supplied only to the optional LLM judge |
 
-\* At least one of `assertions` or `successCriteria` is required.
+\* Exactly one of `userScenario` or `userMessage` is required. At least one of `assertions` or
+`successCriteria` is also required.
 
 Each DOM assertion has `"type": "dom"`, a CSS `selector`, and exactly one expectation:
 

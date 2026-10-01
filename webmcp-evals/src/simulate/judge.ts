@@ -50,6 +50,8 @@ function describeEnding(endedBy: SimulationEndReason, conversation: Conversation
   switch (endedBy) {
     case "user":
       return "The user ended the conversation, considering the matter closed.";
+    case "singleTurn":
+      return "The configured single-turn interaction completed after the assistant responded.";
     case "maxTurns":
       return `The conversation was cut off after ${conversation.turnsUsed} turns, when the turn budget ran out. It did not reach a natural close.`;
     case "timeout":

@@ -6,7 +6,7 @@
 /**
  * The browser-lifecycle counterpart of `executeInBrowserEvals`: for every
  * simulation and every run, open a fresh page, put the world into its starting
- * state, let a simulated user and the agent talk, and have a judge weigh what
+ * state, run either a direct message or simulated conversation, and check what
  * came of it.
  *
  * Result types live here rather than in `src/types/` because they carry a
@@ -110,7 +110,8 @@ export type SimulationModels = {
 };
 
 export type SimulationActorModels = Pick<SimulationModels, "agent" | "user">;
-type AvailableSimulationModels = SimulationActorModels & Partial<Pick<SimulationModels, "judge">>;
+type AvailableSimulationModels = Pick<SimulationModels, "agent"> &
+  Partial<Pick<SimulationModels, "user" | "judge">>;
 
 /**
  * Injection points for tests, following `SmokeDependencies`. `runConversation`
@@ -130,7 +131,7 @@ export type SimulationDependencies = {
     page: BrowserPage,
     assertions: DomAssertion[],
   ) => Promise<DomAssertionResult[]>;
-  models?: SimulationActorModels | SimulationModels;
+  models?: AvailableSimulationModels;
 };
 
 function messageOf(error: unknown): string {
@@ -150,21 +151,32 @@ function resolveOne(config: SimulationConfig, modelId: string): LanguageModel {
   });
 }
 
+export function resolveSimulationModels(config: SimulationConfig): SimulationModels;
 export function resolveSimulationModels(
   config: SimulationConfig,
-  options: { includeJudge: false },
+  options: { includeJudge: false; includeUser?: true },
 ): SimulationActorModels;
 export function resolveSimulationModels(
   config: SimulationConfig,
-  options?: { includeJudge?: true },
-): SimulationModels;
+  options: { includeJudge: false; includeUser: false },
+): Pick<SimulationModels, "agent">;
 export function resolveSimulationModels(
   config: SimulationConfig,
-  options: { includeJudge?: boolean } = {},
+  options: { includeJudge?: true; includeUser: false },
+): Pick<SimulationModels, "agent" | "judge">;
+export function resolveSimulationModels(
+  config: SimulationConfig,
+  options: { includeJudge?: boolean; includeUser?: boolean },
+): AvailableSimulationModels;
+export function resolveSimulationModels(
+  config: SimulationConfig,
+  options: { includeJudge?: boolean; includeUser?: boolean } = {},
 ): AvailableSimulationModels {
   return {
     agent: resolveOne(config, config.model),
-    user: resolveOne(config, config.userModel || config.model),
+    ...(options.includeUser === false
+      ? {}
+      : { user: resolveOne(config, config.userModel || config.model) }),
     ...(options.includeJudge === false
       ? {}
       : { judge: resolveOne(config, config.judgeModel || ANALYZER_MODEL_DEFAULT) }),
@@ -235,14 +247,23 @@ async function runOneSimulation(
       }
     }
 
+    let conversationInput:
+      | { userMessage: string }
+      | { userScenario: string; userModel: LanguageModel };
+    if (simulation.userMessage !== undefined) {
+      conversationInput = { userMessage: simulation.userMessage };
+    } else {
+      if (!models.user)
+        throw new Error("the simulation requires a user model, but none is available");
+      conversationInput = { userScenario: simulation.userScenario, userModel: models.user };
+    }
     conversation = await conversationOf({
-      userScenario: simulation.userScenario,
+      ...conversationInput,
       maxTurns: simulation.maxTurns,
       maxDurationMs: simulation.maxDurationMs || config.maxDurationMs || DEFAULT_MAX_DURATION_MS,
       maxSteps: config.maxSteps || DEFAULT_MAX_STEPS,
       registry: registry as any,
       agentModel: models.agent,
-      userModel: models.user,
     });
 
     if (conversation.endedBy === "error") {
@@ -392,11 +413,10 @@ export async function executeSimulations(
 
   const runs = config.runs || 1;
   const needsJudge = simulations.some((simulation) => Boolean(simulation.successCriteria));
+  const needsUser = simulations.some((simulation) => simulation.userScenario !== undefined);
   const models =
     dependencies.models ||
-    (needsJudge
-      ? resolveSimulationModels(config)
-      : resolveSimulationModels(config, { includeJudge: false }));
+    resolveSimulationModels(config, { includeJudge: needsJudge, includeUser: needsUser });
   const openBrowser =
     dependencies.launchBrowser || (async () => await launchBrowser(config.chromeChannel));
   const createRegistry =

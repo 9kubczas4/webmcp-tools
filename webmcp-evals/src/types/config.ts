@@ -38,20 +38,20 @@ export type WebmcpConfig = {
 };
 
 /**
- * Configuration for the `simulate` command. Three models are in play at once —
- * the agent under test, the simulated user, and the judge — so unlike
- * `WebmcpConfig` a single `model` field cannot carry them all.
+ * Configuration for the `simulate` command. Up to three models may be in play:
+ * the agent under test, the optional simulated user, and the optional judge.
  */
 export type SimulationConfig = {
   url: string;
   simulationsFile: string;
   provider?: string;
-  /** The agent under test. Also the default for the simulated user. */
+  /** The agent under test. Also the default for cases that use a simulated user. */
   model: string;
   /** Defaults to the analyzer's model, not to the agent's: a model should not
    * grade itself, and the judge's job is closer to the analyzer's than to the
    * agent's. */
   judgeModel?: string;
+  /** Model used only by cases with `userScenario`. */
   userModel?: string;
   runs?: number;
   /** Cap on the agent's tool-calling steps within one turn. */

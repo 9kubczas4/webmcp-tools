@@ -79,13 +79,17 @@ function renderSummary(results: SimulationResults): string {
         </div>`;
 }
 
-function renderConfiguration(config: SimulationConfig, usesJudge: boolean): string {
+function renderConfiguration(
+  config: SimulationConfig,
+  usesJudge: boolean,
+  usesSimulatedUser: boolean,
+): string {
   return `
 <ul class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 text-sm text-slate-600">
     <li class="flex flex-col"><strong class="text-slate-900 font-medium">URL</strong> <code class="mt-1 px-2 py-1 bg-slate-100 rounded text-xs text-slate-800 font-mono break-all">${escapeHtml(config.url)}</code></li>
     <li class="flex flex-col"><strong class="text-slate-900 font-medium">Simulations</strong> <code class="mt-1 px-2 py-1 bg-slate-100 rounded text-xs text-slate-800 font-mono break-all">${escapeHtml(config.simulationsFile)}</code></li>
     <li class="flex flex-col"><strong class="text-slate-900 font-medium">Agent under test</strong> <span class="mt-1 text-slate-800">${escapeHtml(config.model)}</span></li>
-    <li class="flex flex-col"><strong class="text-slate-900 font-medium">Simulated user</strong> <span class="mt-1 text-slate-800">${escapeHtml(config.userModel || config.model)}</span></li>
+    <li class="flex flex-col"><strong class="text-slate-900 font-medium">Simulated user</strong> <span class="mt-1 text-slate-800">${usesSimulatedUser ? escapeHtml(config.userModel || config.model) : "Not used"}</span></li>
     <li class="flex flex-col"><strong class="text-slate-900 font-medium">Judge</strong> <span class="mt-1 text-slate-800">${usesJudge ? escapeHtml(config.judgeModel || ANALYZER_MODEL_DEFAULT) : "Not used"}</span></li>
     <li class="flex flex-col"><strong class="text-slate-900 font-medium">Chrome channel</strong> <span class="mt-1 text-slate-800">${escapeHtml(config.chromeChannel || "chrome-canary")}</span></li>
 </ul>`;
@@ -236,7 +240,7 @@ function renderVerdict(verdict: SimulationVerdict, criteria: string): string {
     </div>`;
 }
 
-function renderTurn(turn: ConversationTurn): string {
+function renderTurn(turn: ConversationTurn, userLabel: string): string {
   return `
     <div class="bg-white rounded-lg border border-slate-200 overflow-hidden">
       <div class="p-3 border-b border-slate-100 bg-slate-50/60">
@@ -244,7 +248,7 @@ function renderTurn(turn: ConversationTurn): string {
       </div>
       <div class="p-3 space-y-3">
         <div>
-          <span class="px-2 py-0.5 rounded text-[10px] font-semibold border bg-purple-100 text-purple-800 border-purple-200">Simulated user</span>
+          <span class="px-2 py-0.5 rounded text-[10px] font-semibold border bg-purple-100 text-purple-800 border-purple-200">${userLabel}</span>
           <p class="mt-1 text-sm text-slate-700 whitespace-pre-wrap">${escapeHtml(turn.userMessage)}</p>
         </div>
         ${
@@ -274,6 +278,7 @@ function renderRun(result: SimulationResult, totalRuns: number): string {
   const badge = OUTCOME_BADGES[result.outcome];
   const turnsUsed = result.verdict?.turnsUsed ?? result.conversation?.turnsUsed;
   const endedBy = result.verdict?.endedBy ?? result.conversation?.endedBy;
+  const directMessage = result.simulation.userMessage;
 
   return `
     <div class="border border-slate-200 rounded-lg bg-white shadow-xs overflow-hidden">
@@ -324,14 +329,18 @@ function renderRun(result: SimulationResult, totalRuns: number): string {
           ${renderDomAssertions(result)}
           ${renderSetupCalls(result.setupCalls)}
           <div class="bg-white rounded-lg border border-slate-200 p-3">
-            <h5 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">The user's brief</h5>
-            <p class="text-sm text-slate-700 whitespace-pre-wrap">${escapeHtml(result.simulation.userScenario)}</p>
+            <h5 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">${directMessage !== undefined ? "Direct user message" : "The user's brief"}</h5>
+            <p class="text-sm text-slate-700 whitespace-pre-wrap">${escapeHtml(directMessage ?? result.simulation.userScenario)}</p>
           </div>
           <div class="space-y-3">
             <h4 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Conversation</h4>
             ${
               result.conversation?.turns.length
-                ? result.conversation.turns.map(renderTurn).join("")
+                ? result.conversation.turns
+                    .map((turn) =>
+                      renderTurn(turn, directMessage !== undefined ? "User" : "Simulated user"),
+                    )
+                    .join("")
                 : `<p class="text-xs text-slate-400 italic">Nothing was exchanged.</p>`
             }
             ${
@@ -413,6 +422,9 @@ export function renderSimulationReport(
 ): string {
   const groups = groupBySimulation(results.results);
   const usesJudge = results.results.some((result) => Boolean(result.simulation.successCriteria));
+  const usesSimulatedUser = results.results.some(
+    (result) => result.simulation.userScenario !== undefined,
+  );
 
   // TODO(simulate): third copy of this document shell, after `renderReport`
   // and `renderWebmcpReport`. Collapse the three into one when the simulation
@@ -449,7 +461,7 @@ export function renderSimulationReport(
 
         <section class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
             <h2 class="text-xl font-semibold mb-4 text-slate-800">Configuration</h2>
-            ${renderConfiguration(config, usesJudge)}
+            ${renderConfiguration(config, usesJudge, usesSimulatedUser)}
         </section>
 
         <section class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">

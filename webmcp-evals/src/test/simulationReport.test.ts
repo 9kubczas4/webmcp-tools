@@ -190,6 +190,44 @@ describe("renderSimulationReport", () => {
     assert.ok(!configuration.includes("judge-model"));
   });
 
+  it("labels a direct message and reports that no simulated-user model was used", () => {
+    const html = renderSimulationReport(
+      config,
+      resultsOf([
+        result({
+          simulation: {
+            name: "Adds a jacket directly",
+            userMessage: "Add the black jacket to my cart.",
+            maxTurns: 1,
+            assertions: [{ type: "dom", selector: "#cart", expect: { exists: true } }],
+          },
+          verdict: undefined,
+          conversation: {
+            turns: [
+              {
+                index: 1,
+                userMessage: "Add the black jacket to my cart.",
+                agentText: "Done.",
+                steps: [],
+                toolCalls: [],
+              },
+            ],
+            turnsUsed: 1,
+            durationMs: 100,
+            endedBy: "singleTurn",
+          },
+        }),
+      ]),
+    );
+
+    const configuration = html.split("Configuration")[1].split("Summary")[0];
+    assert.match(configuration, /Simulated user/);
+    assert.match(configuration, /Not used/);
+    assert.match(html, /Direct user message/);
+    assert.match(html, /Add the black jacket to my cart\./);
+    assert.ok(!html.includes("The user&#039;s brief"));
+  });
+
   it("labels setup as world state and keeps it out of the agent's tool calls", () => {
     const html = renderSimulationReport(
       config,

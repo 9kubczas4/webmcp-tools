@@ -80,6 +80,30 @@ describe("runConversation", () => {
     assert.strictEqual(result.error, undefined);
   });
 
+  it("runs one direct user message without invoking the simulated user", async () => {
+    const agent = agentReplying("Added the jacket.");
+    const simulatedUser = async (): Promise<UserTurnResult> => {
+      throw new Error("the simulated user must not run");
+    };
+
+    const result = await runConversation(
+      request({
+        userScenario: undefined,
+        userMessage: "Add the black jacket to my cart.",
+        userModel: undefined,
+        maxTurns: 1,
+      }),
+      deps(simulatedUser, agent.fn),
+    );
+
+    assert.strictEqual(result.endedBy, "singleTurn");
+    assert.strictEqual(result.turnsUsed, 1);
+    assert.strictEqual(result.turns[0].userMessage, "Add the black jacket to my cart.");
+    assert.deepStrictEqual(agent.seen[0].messages, [
+      { role: "user", content: "Add the black jacket to my cart." },
+    ]);
+  });
+
   it("ends on the clock when the agent will not return", async () => {
     const user = scriptedUser([{ message: "I need a jacket.", done: false }]);
     const stuckAgent = async (): Promise<AgentTurnResult> => await new Promise(() => {});
