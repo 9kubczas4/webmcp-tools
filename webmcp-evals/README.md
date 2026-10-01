@@ -344,8 +344,11 @@ Each DOM assertion has `"type": "dom"`, a CSS `selector`, and exactly one expect
 | `text`      | Trimmed `textContent` of the first matching element, or `null` |
 | `attribute` | Named attribute of the first matching element, or `null`       |
 
-`count`, `text`, and attribute `value` accept the matching operators listed below. Assertions read
-the DOM after the conversation; they do not execute JavaScript or inspect computed styles. Prefer
+`count`, `text`, and attribute `value` accept the matching operators listed below. Assertions are
+evaluated in a single DOM read pass immediately after the conversation ends; they do not poll,
+retry, or wait for later rendering. `exists` and `count` inspect the full selector result, while
+`text` and `attribute` inspect only the first matching element in DOM order (or return `null` when
+nothing matches). Assertions do not run user-provided JavaScript or inspect computed styles. Prefer
 stable, application-owned IDs or `data-*` attributes over selectors tied to visual layout.
 
 See the complete [Pizza Maker simulation suite](examples/pizza-maker/simulations.json), the
