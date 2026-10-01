@@ -27,6 +27,12 @@ import { mapJsonSchemaToVercelTools } from "../evaluator/mappers.js";
 import { SYSTEM_PROMPT } from "../evaluator/prompts.js";
 import { ToolRegistry } from "../evaluator/toolRegistry.js";
 
+export type AgentTurnProgress = {
+  text: string;
+  steps: TrajectoryStep[];
+  toolCalls: ToolCall[];
+};
+
 export type AgentTurnRequest = {
   /** The whole conversation so far, including earlier turns' tool traffic. */
   messages: ModelMessage[];
@@ -36,6 +42,8 @@ export type AgentTurnRequest = {
   maxSteps: number;
   /** Ends the turn when the conversation's wall-clock budget expires. */
   abortSignal?: AbortSignal;
+  /** Publishes completed work while the turn is still running. */
+  onProgress?: (progress: AgentTurnProgress) => void;
 };
 
 export type AgentTurnResult = {
@@ -76,7 +84,7 @@ function collectToolCalls(steps: any[]): ToolCall[] {
 }
 
 export async function runAgentTurn(request: AgentTurnRequest): Promise<AgentTurnResult> {
-  const { messages, registry, model, maxSteps, abortSignal } = request;
+  const { messages, registry, model, maxSteps, abortSignal, onProgress } = request;
 
   const availableToolsPerStep: Tool[][] = [];
   const stepsHistory: TrajectoryStep[] = [];
@@ -118,6 +126,14 @@ export async function runAgentTurn(request: AgentTurnRequest): Promise<AgentTurn
           reasoningText: event.reasoningText,
           toolCalls: event.toolCalls,
           toolResults: event.toolResults,
+        });
+        onProgress?.({
+          text: stepsHistory
+            .map((step) => step.text)
+            .filter(Boolean)
+            .join("\n"),
+          steps: asTrajectory(stepsHistory),
+          toolCalls: collectToolCalls(stepsHistory),
         });
       },
       // WebMCP tools belong to the page, so the set changes as the agent

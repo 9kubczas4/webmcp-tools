@@ -8,7 +8,7 @@ import { TrajectoryStep } from "../types/evals.js";
 import { ToolCall } from "../types/tools.js";
 import { SimulationEndReason } from "../types/simulations.js";
 import { ToolRegistry } from "../evaluator/toolRegistry.js";
-import { AgentTurnRequest, AgentTurnResult, runAgentTurn } from "./agentTurn.js";
+import { AgentTurnProgress, AgentTurnRequest, AgentTurnResult, runAgentTurn } from "./agentTurn.js";
 import {
   simulateUserTurn,
   UserTurnRequest,
@@ -147,6 +147,7 @@ export async function runConversation(
 
       const controller = new AbortController();
       let agentResult: AgentTurnResult;
+      let agentProgress: AgentTurnProgress | undefined;
       try {
         agentResult = await withTimeout(
           agentTurn({
@@ -155,6 +156,9 @@ export async function runConversation(
             model: request.agentModel,
             maxSteps: request.maxSteps,
             abortSignal: controller.signal,
+            onProgress: (progress) => {
+              agentProgress = progress;
+            },
           }),
           Math.max(remainingMs(), 1),
           "the agent's turn",
@@ -163,6 +167,15 @@ export async function runConversation(
         // We are walking away from work still in flight; tell it to stop
         // rather than leaving a browser driving itself in the background.
         controller.abort();
+        if (agentProgress) {
+          turns.push({
+            index,
+            userMessage: userReply.message,
+            agentText: agentProgress.text,
+            steps: agentProgress.steps,
+            toolCalls: agentProgress.toolCalls,
+          });
+        }
         throw thrown;
       }
 

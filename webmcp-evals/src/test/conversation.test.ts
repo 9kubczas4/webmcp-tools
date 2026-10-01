@@ -113,6 +113,40 @@ describe("runConversation", () => {
     assert.strictEqual(result.turns[0].agentText, "First reply.");
   });
 
+  it("keeps completed steps from the active turn when its next step times out", async () => {
+    const user = scriptedUser([{ message: "Add the jacket.", done: false }]);
+    let signal: AbortSignal | undefined;
+    const stuckAgent = async (agentRequest: AgentTurnRequest): Promise<AgentTurnResult> => {
+      signal = agentRequest.abortSignal;
+      agentRequest.onProgress?.({
+        text: "",
+        steps: [
+          {
+            text: "",
+            toolCalls: [
+              { toolName: "addToCart", toolCallId: "call-1", input: { productId: "p3" } },
+            ],
+            toolResults: [{ toolName: "addToCart", toolCallId: "call-1", result: "p3 added" }],
+            availableTools: [],
+          },
+        ],
+        toolCalls: [{ functionName: "addToCart", args: { productId: "p3" }, result: "p3 added" }],
+      });
+      return await new Promise(() => {});
+    };
+
+    const result = await runConversation(request({ maxDurationMs: 60 }), deps(user.fn, stuckAgent));
+
+    assert.strictEqual(result.endedBy, "timeout");
+    assert.strictEqual(result.turnsUsed, 1);
+    assert.strictEqual(result.turns[0].userMessage, "Add the jacket.");
+    assert.strictEqual(result.turns[0].steps.length, 1);
+    assert.deepStrictEqual(result.turns[0].toolCalls, [
+      { functionName: "addToCart", args: { productId: "p3" }, result: "p3 added" },
+    ]);
+    assert.strictEqual(signal!.aborted, true);
+  });
+
   it("aborts the turn it walked away from", async () => {
     const user = scriptedUser([{ message: "I need a jacket.", done: false }]);
     let signal: AbortSignal | undefined;

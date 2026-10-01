@@ -111,6 +111,25 @@ describe("runAgentTurn", () => {
     assert.deepStrictEqual(result.responseMessages, []);
   });
 
+  it("publishes a snapshot after every completed step", async (t) => {
+    t.mock.method(ai.ToolLoopAgent.prototype, "generate", async function (this: any) {
+      this.settings.onStepFinish({
+        text: "",
+        toolCalls: [{ toolName: "addToCart", toolCallId: "call-1", input: { productId: "p3" } }],
+        toolResults: [{ toolName: "addToCart", toolCallId: "call-1", result: "p3 added" }],
+      });
+      throw new Error("next step stalled");
+    });
+    let snapshot: any;
+
+    await runAgentTurn(turn({ onProgress: (progress: any) => (snapshot = progress) }));
+
+    assert.strictEqual(snapshot.steps.length, 1);
+    assert.deepStrictEqual(snapshot.toolCalls, [
+      { functionName: "addToCart", args: { productId: "p3" }, result: "p3 added" },
+    ]);
+  });
+
   it("forwards an abort signal so a budget can cut the turn short", async (t) => {
     let captured: any = null;
     t.mock.method(ai.ToolLoopAgent.prototype, "generate", async (options: any) => {
