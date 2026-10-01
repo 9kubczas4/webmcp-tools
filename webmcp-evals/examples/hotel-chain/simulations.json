@@ -1,17 +1,17 @@
 [
   {
     "name": "Prepare the only matching Tokyo hotel for confirmation",
-    "userScenario": "You are arranging a three-night Tokyo stay beginning 2027-04-12 for two adults and one child. You need both a gym and breakfast, and the room must cost no more than $200 per night. Find the hotel that satisfies every requirement and prepare the reservation form for Maya Chen using maya.chen@example.com. You want to review it yourself before the final confirmation.",
+    "userScenario": "You are arranging a three-night Tokyo stay beginning 2027-04-12 for two adults and one child. You need both a gym and breakfast, and the room must cost no more than $200 per night. Find the hotel that satisfies every requirement and open its reservation form for Maya Chen using maya.chen@example.com. You want to enter or review the guest details and submit the form yourself, so do not complete the reservation.",
     "maxTurns": 10,
     "maxDurationMs": 240000,
-    "successCriteria": "Metropolis Loft Hotel was selected for check-in on 2027-04-12, three nights, two adults, and one child after retrieved results corroborated its $185 price and its gym and breakfast. The booking form was populated for Maya Chen at maya.chen@example.com and left pending for the user's review. The agent clearly explains that the user must submit the form; claiming that the reservation was already confirmed, selecting another hotel, or losing any trip detail is not success."
+    "successCriteria": "Metropolis Loft Hotel was selected for check-in on 2027-04-12, three nights, two adults, and one child after retrieved results corroborated its $185 price and its gym and breakfast. Its booking form was opened for the user's review, the agent explained that the user must enter or review Maya Chen and maya.chen@example.com and submit the form themselves, and complete_booking was not executed. Claiming that the form was populated or the reservation was confirmed, selecting another hotel, or losing any trip detail is not success."
   },
   {
     "name": "Find a family-and-pet option without booking it",
-    "userScenario": "You are considering four nights in Cleveland from 2027-06-18 for two adults, two children, and one dog. Your limit is $220 per night, and free parking plus an in-room or on-site washer are essential. Find the option that fits, explain why it fits, and open its details so you can inspect it. You are not ready to start or complete a reservation.",
+    "userScenario": "You are considering four nights in Cleveland from 2027-06-18 for two adults, two children, and one dog. Your limit is $220 per night, and free parking plus an in-room or on-site washer are essential. Find the option that fits, explain why it fits, and open its details so you can inspect it. You are not ready to complete a reservation.",
     "maxTurns": 8,
     "maxDurationMs": 210000,
-    "successCriteria": "Cleveland Lakeside Suites was identified from retrieved search results and its detail page was opened. The evidence confirms a price of $195 per night, free parking, washer access, and a description that accommodates pets, while the search retained the 2027-06-18 check-in, four nights, two adults, two children, and one pet. Neither start_booking nor complete_booking was executed."
+    "successCriteria": "Cleveland Lakeside Suites was identified from retrieved search results and its detail page was opened. The evidence confirms a price of $195 per night, free parking, washer access, and a description that accommodates pets, while the search retained the 2027-06-18 check-in, four nights, two adults, two children, and one pet. complete_booking was not executed."
   },
   {
     "name": "Recover from an obsolete Cleveland search",
@@ -35,7 +35,7 @@
         }
       }
     ],
-    "userScenario": "You were looking at affordable Cleveland hotels, but the trip has changed completely. You now need Tokyo for the same dates and guest count, with spa and dining as mandatory amenities; the old price and parking requirements no longer matter. Find the matching property, open its details, and check its late-checkout information. Do not start a booking.",
+    "userScenario": "You were looking at affordable Cleveland hotels, but the trip has changed completely. You now need Tokyo beginning 2027-09-03 for two nights and one adult, with spa and dining as mandatory amenities; the old price and parking requirements no longer matter. Find the matching property, open its details, and check its late-checkout information. Do not start a booking.",
     "maxTurns": 9,
     "maxDurationMs": 210000,
     "successCriteria": "The obsolete Cleveland constraints were abandoned and the active search was changed to Tokyo for 2027-09-03, two nights, and one adult without carrying over the $200 or free-parking filters. Retrieved results identify The Aurelian Shibuya as having both spa and dining, its details and late-checkout information were opened, and no booking was started or completed."
