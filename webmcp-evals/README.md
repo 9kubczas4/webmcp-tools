@@ -195,8 +195,9 @@ npx webmcp-evals simulate \
 | `-v, --verbose`                 | No       | `false`        | Print live page and conversation logs                        |
 
 The global `--runs`, `--max-steps`, `--reporter`, `--output-dir`, and `--chrome-channel`
-options also apply. There is no `--max-turns` option: `maxTurns` belongs to each `userScenario` case
-because it changes what that case measures.
+options also apply. There is no `--max-turns` option: `maxTurns` is an optional, case-specific limit
+for `userScenario` cases and defaults to `1` when omitted. Cases with `userMessage` always run one
+turn and cannot set `maxTurns`.
 
 A simulation always uses the agent under test. Cases with `userScenario` also use a simulated user;
 cases with `userMessage` send that exact message directly to the agent and use no user model. A
@@ -327,7 +328,7 @@ Field reference:
 | `setup`           | No       | Ordered concrete tool calls run before the conversation         |
 | `userScenario`    | No\*     | Brief for a model-driven simulated user                         |
 | `userMessage`     | No\*     | Exact message for a single turn with no simulated-user model    |
-| `maxTurns`        | No       | Exchange limit for `userScenario`; invalid with `userMessage`   |
+| `maxTurns`        | No       | Exchange limit for `userScenario`; defaults to `1`              |
 | `maxDurationMs`   | No       | Positive wall-clock budget; falls back to the CLI value         |
 | `assertions`      | No\*     | Non-empty list of deterministic checks against the final DOM    |
 | `successCriteria` | No\*     | Non-empty prose outcome supplied only to the optional LLM judge |
