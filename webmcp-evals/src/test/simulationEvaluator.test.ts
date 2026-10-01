@@ -39,7 +39,7 @@ class FakePage {
   }
 }
 
-class FakeBrowser {
+class FakeBrowserContext {
   closed = false;
   pages: FakePage[] = [];
 
@@ -47,6 +47,26 @@ class FakeBrowser {
     const page = new FakePage();
     this.pages.push(page);
     return page as unknown as BrowserPage;
+  }
+
+  async close(): Promise<void> {
+    this.closed = true;
+    for (const page of this.pages) await page.close();
+  }
+}
+
+class FakeBrowser {
+  closed = false;
+  contexts: FakeBrowserContext[] = [];
+
+  get pages(): FakePage[] {
+    return this.contexts.flatMap((context) => context.pages);
+  }
+
+  async createBrowserContext(): Promise<FakeBrowserContext> {
+    const context = new FakeBrowserContext();
+    this.contexts.push(context);
+    return context;
   }
 
   async close(): Promise<void> {
@@ -171,7 +191,7 @@ describe("executeSimulations", () => {
     );
   });
 
-  it("opens a fresh page per simulation per run and closes everything", async () => {
+  it("opens a fresh context per simulation per run and closes everything", async () => {
     const browser = new FakeBrowser();
 
     await executeSimulations(
@@ -181,9 +201,32 @@ describe("executeSimulations", () => {
       deps({ launchBrowser: async () => browser as unknown as Browser }),
     );
 
-    assert.strictEqual(browser.pages.length, 4, "setup state must not leak between cases");
+    assert.strictEqual(browser.contexts.length, 4, "storage must not leak between cases or runs");
+    assert.ok(browser.contexts.every((context) => context.closed));
+    assert.strictEqual(browser.pages.length, 4);
     assert.ok(browser.pages.every((page) => page.closed));
     assert.ok(browser.pages.every((page) => page.navigatedTo === "https://example.test"));
+    assert.ok(browser.closed);
+  });
+
+  it("closes the context when page creation fails", async () => {
+    const browser = new FakeBrowser();
+    const context = new FakeBrowserContext();
+    context.newPage = async () => {
+      throw new Error("page creation failed");
+    };
+    browser.createBrowserContext = async () => context;
+
+    const results = await executeSimulations(
+      [simulation()],
+      config(),
+      undefined,
+      deps({ launchBrowser: async () => browser as unknown as Browser }),
+    );
+
+    assert.strictEqual(results.errorCount, 1);
+    assert.match(results.results[0].error || "", /page creation failed/);
+    assert.ok(context.closed);
     assert.ok(browser.closed);
   });
 

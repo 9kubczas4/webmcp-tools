@@ -5,7 +5,7 @@
 
 /**
  * The browser-lifecycle counterpart of `executeInBrowserEvals`: for every
- * simulation and every run, open a fresh page, put the world into its starting
+ * simulation and every run, open an isolated browser context, put the world into its starting
  * state, run either a direct message or simulated conversation, and check what
  * came of it.
  *
@@ -196,7 +196,8 @@ async function runOneSimulation(
   const evaluateAssertions = dependencies.evaluateDomAssertions || evaluateDomAssertions;
   const timeoutMs = config.timeoutMs || DEFAULT_TIMEOUT_MS;
 
-  const page = await browser.newPage();
+  // A new page alone shares cookies and origin storage with earlier runs.
+  const context = await browser.createBrowserContext();
   let registry: SimulationRegistry | undefined;
   let setupCalls: ToolCallOutcome[] | undefined;
   let conversation: ConversationResult | undefined;
@@ -208,6 +209,7 @@ async function runOneSimulation(
   };
 
   try {
+    const page = await context.newPage();
     if (config.verbose) {
       console.log(
         chalk.cyan(`\n[Simulate] Opening fresh page for "${simulation.name}" at ${config.url}...`),
@@ -397,7 +399,8 @@ async function runOneSimulation(
       ...consoleErrors(),
     };
   } finally {
-    await page.close();
+    // Also closes any additional pages opened by tools during the simulation.
+    await context.close();
   }
 }
 

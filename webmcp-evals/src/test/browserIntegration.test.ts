@@ -9,8 +9,92 @@ import { describe, it } from "node:test";
 import { BrowserToolRegistry, launchBrowser } from "../evaluator/browser.js";
 import { runConversation } from "../simulate/conversation.js";
 import { evaluateDomAssertions } from "../simulate/domAssertions.js";
+import { executeSimulations } from "../evaluator/simulationEvaluator.js";
+import { LoadedSimulation } from "../types/simulations.js";
 
 describe("Browser Integration", () => {
+  it("isolates persisted state between simulation cases and repeated runs", async (t) => {
+    const server = http.createServer((_req, res) => {
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(`
+        <!DOCTYPE html><p id="status"></p>
+        <script>
+          const status = document.querySelector('#status');
+          const render = () => {
+            status.textContent = localStorage.getItem('completed') || 'pending';
+            status.dataset.cookie = document.cookie.includes('completed=yes') ? 'yes' : 'no';
+          };
+          render();
+          document.modelContext.registerTool({
+            name: 'complete',
+            description: 'Complete the task',
+            execute: () => {
+              localStorage.setItem('completed', 'yes');
+              document.cookie = 'completed=yes; path=/';
+              render();
+              return { success: true };
+            }
+          });
+        </script>
+      `);
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    t.after(() => server.close());
+
+    let browser;
+    try {
+      browser = await launchBrowser();
+    } catch {
+      t.skip("Could not launch browser");
+      return;
+    }
+    t.after(() => browser.close());
+    const simulation: LoadedSimulation = {
+      name: "Complete task",
+      userMessage: "Complete the task.",
+      maxTurns: 1,
+      assertions: [
+        { type: "dom", selector: "#status", expect: { text: "yes" } },
+        {
+          type: "dom",
+          selector: "#status",
+          expect: { attribute: { name: "data-cookie", value: "yes" } },
+        },
+      ],
+    };
+    let conversations = 0;
+    const results = await executeSimulations(
+      [simulation, { ...simulation, name: "Another case" }],
+      {
+        url: `http://127.0.0.1:${(server.address() as { port: number }).port}`,
+        simulationsFile: "fixture",
+        model: "unused",
+        runs: 2,
+      },
+      undefined,
+      {
+        launchBrowser: async () => browser,
+        models: { agent: "unused" },
+        runConversation: async ({ registry }) => {
+          // Only the very first agent acts. Later cases and repetitions must
+          // not receive credit for its persisted state.
+          if (conversations++ === 0) await registry.executeTool("complete", {});
+          return { turns: [], turnsUsed: 0, durationMs: 0, endedBy: "singleTurn" };
+        },
+      },
+    );
+
+    assert.deepStrictEqual(
+      results.results.map((result) => result.assertionResults?.map((check) => check.outcome)),
+      [
+        ["pass", "pass"],
+        ["fail", "fail"],
+        ["fail", "fail"],
+        ["fail", "fail"],
+      ],
+    );
+  });
+
   it("should discover tools and inspect final DOM state on SPA hash routes", async (t) => {
     const server = http.createServer((_req, res) => {
       res.writeHead(200, { "Content-Type": "text/html" });
