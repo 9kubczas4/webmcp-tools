@@ -40,7 +40,12 @@ export type AgentTurnRequest = {
   model: LanguageModel;
   /** Cap on tool-calling steps within this one turn. */
   maxSteps: number;
-  /** Ends the turn when the conversation's wall-clock budget expires. */
+  /**
+   * Requests cancellation of the model call when the conversation's
+   * wall-clock budget expires. The signal is not forwarded to
+   * `ToolRegistry.executeTool`; a page operation already in flight may still
+   * finish and mutate the DOM after this turn returns.
+   */
   abortSignal?: AbortSignal;
   /** Publishes completed work while the turn is still running. */
   onProgress?: (progress: AgentTurnProgress) => void;
@@ -107,6 +112,9 @@ export async function runAgentTurn(request: AgentTurnRequest): Promise<AgentTurn
       for (const key of Object.keys(executableTools)) delete executableTools[key];
       Object.assign(
         executableTools,
+        // Deliberately no abort signal here: ToolRegistry has no cancellation
+        // contract. Aborting the model prevents further agent work, but cannot
+        // promise to stop a page tool that has already started.
         mapJsonSchemaToVercelTools(tools, (fnName, args) => registry.executeTool(fnName, args)),
       );
     };

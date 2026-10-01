@@ -181,8 +181,10 @@ export async function runConversation(
           "the agent's turn",
         );
       } catch (thrown) {
-        // We are walking away from work still in flight; tell it to stop
-        // rather than leaving a browser driving itself in the background.
+        // Stop the model request so it cannot start more work. This signal
+        // does not reach ToolRegistry.executeTool: a page operation already in
+        // flight may still finish and mutate the DOM after we return. Callers
+        // observe whatever DOM state exists when they take their snapshot.
         controller.abort();
         if (agentProgress) {
           turns.push({
