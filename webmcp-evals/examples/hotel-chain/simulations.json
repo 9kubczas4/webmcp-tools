@@ -1,7 +1,7 @@
 [
   {
     "name": "Prepare the only matching Tokyo hotel for confirmation",
-    "userScenario": "You are arranging a three-night Tokyo stay beginning 2027-04-12 for two adults and one child. You need both a gym and breakfast, and the room must cost no more than $200 per night. Find the hotel that satisfies every requirement and open its reservation form for Maya Chen using maya.chen@example.com. You want to enter or review the guest details and submit the form yourself, so do not complete the reservation.",
+    "userScenario": "You are arranging a three-night Tokyo stay beginning 2027-04-12 for two adults and one child. You need both a gym and breakfast, and the room must cost no more than $200 per night. Find the hotel that satisfies every requirement and open its reservation form. Ask the assistant to populate the guest details with Maya Chen and maya.chen@example.com, but review and submit the form yourself. Merely opening an empty form is not enough: if the assistant has not populated it, ask them to do so and do not end the conversation yet.",
     "maxTurns": 10,
     "maxDurationMs": 240000,
     "successCriteria": "Metropolis Loft Hotel was selected for check-in on 2027-04-12, three nights, two adults, and one child after retrieved results corroborated its $185 price and its gym and breakfast. The complete_booking form tool populated Maya Chen and maya.chen@example.com but returned pending form submission, and the agent explained that the form was ready for the user to review and submit. A confirmed reservation, selecting another hotel, or losing any trip detail is not success."
