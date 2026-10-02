@@ -105,17 +105,15 @@ program
     "--user-model <model>",
     "Model identifier for the simulated user (defaults to the agent's model)",
   )
-  // No --max-turns: every case states its own, because it is the one budget
-  // that changes what the case measures.
   .option(
     "--max-duration <milliseconds>",
-    "Wall-clock budget for cases that do not set maxDurationMs",
+    "Total wall-clock budget for whole simulation",
     positiveInteger,
     300000,
   )
   .option(
     "--timeout <milliseconds>",
-    "Timeout per navigation, setup tool call, or judge request",
+    "Timeout per-operation limit for navigation, setup tool calls, and the judge request",
     positiveInteger,
     30000,
   )

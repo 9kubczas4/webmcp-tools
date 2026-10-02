@@ -30,12 +30,12 @@ import { createBackend } from "../backends/index.js";
 import { analyzeEvalReport, ANALYZER_MODEL_DEFAULT, formatShortTitle } from "../analyzer/index.js";
 
 export interface CommandOptions {
-  backend?: string;
   model: string;
   runs: number;
-  maxSteps?: number;
   reporter: string[];
   outputDir: string;
+  maxSteps?: number;
+  backend?: string;
   tools?: string;
   evals?: string;
   url?: string;
