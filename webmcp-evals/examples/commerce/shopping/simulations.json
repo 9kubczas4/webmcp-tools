@@ -1,31 +1,26 @@
 [
   {
-    "name": "Find and buy a leather jacket",
-    "userScenario": "You need a jacket for a concert this weekend. You like leather, you have not decided on a specific one, and you want to complete the purchase today.",
-    "maxTurns": 8,
+    "name": "Find and add a leather jacket to the cart",
+    "userMessage": "Find a leather jacket and add one to my shopping bag.",
     "maxDurationMs": 180000,
-    "successCriteria": "The shopper leaves having bought exactly one leather jacket: a leather jacket was added to the cart and checkout completed successfully. Buying more than one jacket, or reaching checkout with anything else in the cart, is not success."
+    "assertions": [
+      {
+        "type": "dom",
+        "selector": ".cart-badge",
+        "expect": { "text": "1" }
+      }
+    ]
   },
   {
-    "name": "Remove one item from a two-item cart",
-    "setup": [
+    "name": "Add a leather jacket and matching gloves to the cart",
+    "userMessage": "Add one leather jacket and one pair of leather gloves to my shopping bag. Nothing else.",
+    "maxDurationMs": 180000,
+    "assertions": [
       {
-        "functionName": "addToCart",
-        "arguments": {
-          "productId": "p3",
-          "quantity": 1
-        }
-      },
-      {
-        "functionName": "addToCart",
-        "arguments": {
-          "productId": "p4",
-          "quantity": 1
-        }
+        "type": "dom",
+        "selector": ".cart-badge",
+        "expect": { "text": "2" }
       }
-    ],
-    "userScenario": "You already put two things in your cart for a night out. You changed your mind about the hat and only want the jacket now. You do not remember what the hat was called.",
-    "maxTurns": 6,
-    "successCriteria": "The Baseball Cap is no longer in the cart and the Bomber Jacket is still in it. No checkout was performed."
+    ]
   }
 ]
